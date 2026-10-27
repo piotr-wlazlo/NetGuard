@@ -1,12 +1,45 @@
 from datetime import datetime
 
 
-def extract_flow(packets):
+def finish_flow(flow):
+    flow["duration_ms"] = (flow["end_time"] - flow["start_time"]).total_seconds() * 1000
+
+    flow["start_time"] = flow["start_time"].isoformat()
+    flow["end_time"] = flow["end_time"].isoformat()
+
+    return flow
+
+
+def extract_flow(packets, idle_timeout=60):
+    if idle_timeout <= 0:
+        raise ValueError("Idle timeout must be greater than zero.")
+
     flows = {}
+    latest_timestamp = None
 
     for packet in packets:
         if packet is None:
             continue
+
+        timestamp = packet["timestamp"]
+        if isinstance(timestamp, str):
+            timestamp = datetime.fromisoformat(timestamp)
+
+        if latest_timestamp is not None and timestamp < latest_timestamp:
+            raise ValueError("Packets must be ordered by timestamp.")
+
+        latest_timestamp = timestamp
+
+        expired_keys = []
+
+        for key, flow in flows.items():
+            idle_time = (timestamp - flow["end_time"]).total_seconds()
+
+            if idle_time > idle_timeout:
+                expired_keys.append(key)
+
+        for key in expired_keys:
+            yield finish_flow(flows.pop(key))
 
         source = (packet["source_ip"], packet["source_port"])
         destination = (packet["destination_ip"], packet["destination_port"])
@@ -18,10 +51,6 @@ def extract_flow(packets):
             packet["protocol"],
             endpoints
         )
-
-        timestamp = packet["timestamp"]
-        if isinstance(timestamp, str):
-            timestamp = datetime.fromisoformat(timestamp)
 
         if key not in flows:
             flows[key] = {
@@ -47,8 +76,4 @@ def extract_flow(packets):
         flow["end_time"] = max(flow["end_time"], timestamp)
 
     for flow in flows.values():
-        flow["duration_ms"] = (flow["end_time"] - flow["start_time"]).total_seconds() * 1000
-        flow["start_time"] = flow["start_time"].isoformat()
-        flow["end_time"] = flow["end_time"].isoformat()
-
-        yield flow
+        yield finish_flow(flow)
