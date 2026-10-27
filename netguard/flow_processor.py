@@ -44,11 +44,11 @@ def extract_flow(packets):
         flow["byte_count"] += packet["packet_length"]
 
         flow["start_time"] = min(flow["start_time"], timestamp)
-        flow["end_time"] = min(flow["end_time"], timestamp)
+        flow["end_time"] = max(flow["end_time"], timestamp)
 
     for flow in flows.values():
         flow["duration_ms"] = (flow["end_time"] - flow["start_time"]).total_seconds() * 1000
         flow["start_time"] = flow["start_time"].isoformat()
-        flow["end_time"] = max(flow["end_time"].isoformat())
+        flow["end_time"] = flow["end_time"].isoformat()
 
         yield flow

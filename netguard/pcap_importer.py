@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from scapy.all import PcapReader, IP, TCP, UDP, ICMP
+from scapy.error import Scapy_Exception
 
 from flow_processor import extract_flow
 
@@ -10,11 +11,11 @@ def read_pcap_file(file_path):
             for packet in packets:
                 yield packet
 
-    except FileNotFoundError:
-        raise FileNotFoundError(f"File {file_path} not found.")
+    except FileNotFoundError as e:
+        raise FileNotFoundError(f"File {file_path} not found.") from e
 
-    except OSError as e:
-        raise ValueError(f"Could not read file {file_path}: {e}")
+    except (OSError, Scapy_Exception) as e:
+        raise ValueError(f"Could not read file {file_path}: {e}") from e
 
 
 def parse_packet(packet, source_type, source_name):
@@ -69,7 +70,9 @@ if __name__ == '__main__':
     packets = (
         parse_packet(packet, "pcap", "monday_sample.pcap")
         for packet in read_pcap_file(f"data/monday_sample.pcap")
+        # for packet in read_pcap_file(f"data/README.md")
     )
 
     for flow in extract_flow(packets):
         print(flow)
+
