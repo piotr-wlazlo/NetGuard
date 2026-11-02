@@ -7,14 +7,14 @@ from netguard.pcap_importer import read_pcap_file, parse_packet
 
 
 @pytest.mark.parametrize(
-    "transport, protocol, source_port, destination_port",
+    "transport, protocol, source_port, destination_port, flags",
     [
-        (TCP(sport=50000, dport=80), "TCP", 50000, 80),
-        (UDP(sport=53000, dport=53), "UDP", 53000, 53),
-        (ICMP(), "ICMP", None, None)
+        (TCP(sport=50000, dport=80, flags="SA"), "TCP", 50000, 80, "SA"),
+        (UDP(sport=53000, dport=53), "UDP", 53000, 53, ""),
+        (ICMP(), "ICMP", None, None, "")
     ]
 )
-def test_parse_packet(transport, protocol, source_port, destination_port):
+def test_parse_packet(transport, protocol, source_port, destination_port, flags):
     packet = (
         Ether()
         / IP(src="192.168.1.10", dst="192.168.1.20")
@@ -33,7 +33,8 @@ def test_parse_packet(transport, protocol, source_port, destination_port):
         "destination_ip": "192.168.1.20",
         "destination_port": destination_port,
         "timestamp": "2023-11-14T22:13:20.000000+00:00",
-        "packet_length": len(packet)
+        "packet_length": len(packet),
+        "tcp_flags": flags
     }
 
 

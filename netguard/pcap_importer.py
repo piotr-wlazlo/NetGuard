@@ -1,10 +1,6 @@
 from datetime import datetime, timezone
 from scapy.all import PcapReader, IP, TCP, UDP, ICMP
 from scapy.error import Scapy_Exception
-from uuid import uuid4
-
-from netguard.redis_conn import create_redis_client
-from netguard.packet_stream import publish_packet, publish_import_finished
 
 
 def read_pcap_file(file_path):
@@ -39,6 +35,9 @@ def parse_packet(packet, source_type, source_name):
     source_port = None
     destination_ip = ip.dst
     destination_port = None
+    tcp_flags = ""
+    if protocol == "TCP":
+        tcp_flags = str(ip.payload.flags)
     if protocol == "TCP" or protocol == "UDP":
         source_port = ip.payload.sport
         destination_port = ip.payload.dport
@@ -56,34 +55,6 @@ def parse_packet(packet, source_type, source_name):
         "destination_ip": destination_ip,
         "destination_port": destination_port,
         "timestamp": timestamp.isoformat(timespec="microseconds"),
-        "packet_length": packet_length
+        "packet_length": packet_length,
+        "tcp_flags": tcp_flags       # e.g. "SA"; empty for UDP/ICMP
     }
-
-if __name__ == "__main__":
-    client = create_redis_client()
-    stream_name = f"netguard:packets:{uuid4()}"
-    sent_count = 0
-
-    print(f"Strumień: {stream_name}")
-
-    try:
-        client.ping()
-
-        for packet in read_pcap_file("data/monday_sample.pcap"):
-            parsed = parse_packet(
-                packet,
-                source_type="pcap",
-                source_name="monday_sample.pcap",
-            )
-
-            if parsed is None:
-                continue
-
-            publish_packet(client, stream_name, parsed)
-            sent_count += 1
-
-        publish_import_finished(client, stream_name, sent_count)
-        print(f"sent: {sent_count}")
-
-    finally:
-        client.close()

@@ -105,3 +105,19 @@ def test_packets_out_of_order():
     assert flows[1]["duration_ms"] == 0
 
     assert sum(flow["packet_count"] for flow in flows) == 3
+
+def test_direction_and_tcp_flags():
+    base = {"source_type": "pcap", "source_name": "t", "protocol": "TCP"}
+    server_first = {**base, "source_ip": "10.0.0.2", "source_port": 80, "destination_ip": "10.0.0.1",
+                    "destination_port": 40000, "timestamp": "2026-01-01T12:00:00+00:00",
+                    "packet_length": 1000, "tcp_flags": "A"}      # capture starts mid-connection
+    client = {**base, "source_ip": "10.0.0.1", "source_port": 40000, "destination_ip": "10.0.0.2",
+              "destination_port": 80, "timestamp": "2026-01-01T12:00:01+00:00",
+              "packet_length": 60, "tcp_flags": "SA"}
+
+    (flow,) = extract_flow([server_first, client])
+
+    assert (flow["source_ip"], flow["destination_port"]) == ("10.0.0.1", 80)   # client = the high-port side
+    assert (flow["fwd_bytes"], flow["bwd_bytes"]) == (60, 1000)
+    assert (flow["syn_count"], flow["ack_count"]) == (1, 2)
+    assert "client" not in flow

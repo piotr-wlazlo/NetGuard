@@ -2,6 +2,8 @@ from uuid import uuid4
 
 import pytest
 
+from redis.exceptions import RedisError
+
 from netguard.redis_conn import create_redis_client
 from netguard.packet_stream import (
     publish_packet,
@@ -11,17 +13,23 @@ from netguard.packet_stream import (
 from netguard.flow_processor import extract_flow
 
 
-@pytest.fixture
-def redis_stream():
+@pytest.fixture(scope="session")
+def redis_client():
     client = create_redis_client()
-    stream_name = f"netguard:test:{uuid4()}"
-
+    client.connection_pool.connection_kwargs.update(socket_connect_timeout=1)
     try:
         client.ping()
-        yield client, stream_name
-    finally:
-        client.delete(stream_name)
-        client.close()
+    except RedisError:
+        pytest.skip("Redis not available (docker compose up -d redis)")
+    yield client
+    client.close()
+
+
+@pytest.fixture
+def redis_stream(redis_client):
+    stream_name = f"netguard:test:{uuid4()}"
+    yield redis_client, stream_name
+    redis_client.delete(stream_name)
 
 
 @pytest.fixture
