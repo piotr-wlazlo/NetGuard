@@ -1,12 +1,24 @@
 from typing import Iterable, Iterator, Optional
 
 from netguard.domain import (
-    Alert, AlertStatus, AnomalyType, DetectionResult, DISTRIBUTED_TYPES, OPEN_ALERT_STATUSES, Priority, Severity,
+    Alert, AlertSort, AlertStatus, AnomalyType, DetectionResult, DISTRIBUTED_TYPES, OPEN_ALERT_STATUSES, Priority, Severity,
 )
 
 HIGH_CONFIDENCE = 0.7
 MEDIUM_CONFIDENCE = 0.4
 PRIORITY_ORDER = {Priority.P1: 0, Priority.P2: 1, Priority.P3: 2, Priority.P4: 3}
+ALLOWED_TRANSITIONS = {
+    AlertStatus.NEW: {AlertStatus.ACKNOWLEDGED, AlertStatus.RESOLVED, AlertStatus.FALSE_POSITIVE},
+    AlertStatus.ACKNOWLEDGED: {AlertStatus.RESOLVED, AlertStatus.FALSE_POSITIVE},
+    AlertStatus.RESOLVED: set(),
+    AlertStatus.FALSE_POSITIVE: set(),
+}
+
+
+SORT_KEYS = {
+    AlertSort.PRIORITY: lambda a: (PRIORITY_ORDER[a.priority], -a.risk_score, a.id),
+    AlertSort.NEWEST: lambda a: -a.id,
+}
 
 
 def confidence_label(confidence):
@@ -39,6 +51,9 @@ class AlertEngine:
     def __init__(self, window_seconds=60, suppress_windows=5):
         self.window_seconds = window_seconds
         self.suppress_windows = suppress_windows
+        self.reset()
+
+    def reset(self):
         self.alerts = []
         self.suppressed_groups = 0
         self._last = {}
@@ -55,19 +70,34 @@ class AlertEngine:
             pending.setdefault(key, []).append(result)
         yield from self._flush(pending)
 
-    def list_alerts(self, status: Optional[AlertStatus] = None, sort="priority"):
+    def list_alerts(self, status: Optional[AlertStatus] = None, sort=AlertSort.PRIORITY):
         alerts = [a for a in self.alerts if status is None or a.status == status]
-        if sort == "priority":
-            return sorted(alerts, key=lambda a: (PRIORITY_ORDER[a.priority], -a.risk_score, a.id))
-        if sort == "newest":
-            return sorted(alerts, key=lambda a: a.id, reverse=True)
-        raise ValueError(f"Unknown sort: {sort}.")
+        return sorted(alerts, key=SORT_KEYS[AlertSort(sort)])
 
     def get_alert(self, alert_id):
         return next((a for a in self.alerts if a.id == alert_id), None)
 
     def set_status(self, alert_id, status):
-        self.get_alert(alert_id).status = AlertStatus(status)
+        alert = self.get_alert(alert_id)
+        if alert is None:
+            raise KeyError(alert_id)
+        status = AlertStatus(status)
+        if status not in ALLOWED_TRANSITIONS[alert.status]:
+            raise ValueError(f"Cannot change status from {alert.status.value} to {status.value}.")
+        alert.status = status
+        return alert
+
+    def add_alert(self, title, description, priority, group_key=None, risk_score=0.0):
+        alert_id = self._next_id()
+        alert = Alert(
+            title=title, description=description, priority=Priority(priority),
+            group_key=group_key or f"manual|{alert_id}", risk_score=risk_score, id=alert_id,
+        )
+        self.alerts.append(alert)
+        return alert
+
+    def _next_id(self):
+        return len(self.alerts) + 1
 
     def _flush(self, pending):
         created = []
@@ -89,7 +119,7 @@ class AlertEngine:
                              f"confidence {confidence_label(confidence)} ({confidence:.2f})"),
                 priority=priority, group_key=group_key,
                 detection_id=top.detection.id, risk_score=top.risk_score,
-                id=len(self.alerts) + 1,
+                id=self._next_id(),
             )
             self.alerts.append(alert)
             self._last[group_key] = (window, alert)

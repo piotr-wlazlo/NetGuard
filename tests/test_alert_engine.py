@@ -62,3 +62,46 @@ def test_host_sweep_is_one_alert_per_source_and_port():
 
     assert [a.title for a in alerts] == ["HOST_SWEEP 10.0.0.1 → port 22"]
     assert alerts[0].group_key == "HOST_SWEEP|10.0.0.1|port 22"
+
+
+def test_set_status_unknown_alert_raises_key_error():
+    with pytest.raises(KeyError):
+        AlertEngine().set_status(42, AlertStatus.RESOLVED)
+
+
+@pytest.mark.parametrize("start, target", [
+    (AlertStatus.RESOLVED, AlertStatus.NEW),
+    (AlertStatus.FALSE_POSITIVE, AlertStatus.ACKNOWLEDGED),
+    (AlertStatus.ACKNOWLEDGED, AlertStatus.NEW),
+])
+def test_set_status_rejects_invalid_transition(start, target):
+    engine = AlertEngine()
+    alert = engine.add_alert("manual", "", Priority.P3)
+    alert.status = start
+
+    with pytest.raises(ValueError):
+        engine.set_status(alert.id, target)
+    assert alert.status is start
+
+
+def test_add_alert_assigns_sequential_ids():
+    engine = AlertEngine()
+    alerts = list(engine.process([result()]))
+
+    manual = engine.add_alert("manual", "note", "P2")
+
+    assert manual.id == alerts[0].id + 1
+    assert manual.priority is Priority.P2
+    assert manual.group_key == f"manual|{manual.id}"
+
+
+def test_reset_clears_alerts_and_suppression():
+    engine = AlertEngine()
+    list(engine.process([result(window=0)]))
+    list(engine.process([result(window=1)]))
+    assert engine.suppressed_groups == 1
+
+    engine.reset()
+
+    assert engine.alerts == [] and engine.suppressed_groups == 0
+    assert len(list(engine.process([result(window=2)]))) == 1

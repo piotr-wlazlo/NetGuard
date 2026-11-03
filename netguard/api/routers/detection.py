@@ -1,6 +1,10 @@
-from fastapi import APIRouter
+from typing import Annotated
 
-from netguard.domain import AnomalyType, DetectionConfig
+from fastapi import APIRouter, Depends, status
+
+from netguard.api.dependencies import get_analysis_service, get_detection_service
+from netguard.api.schemas import ConfigOut, ImpactPatch, ProtectedNetworksIn, ThresholdsIn, ThresholdsPatch
+from netguard.services import AnalysisService, DetectionService
 
 
 router = APIRouter(
@@ -8,25 +12,34 @@ router = APIRouter(
     tags=["detection"]
 )
 
-
-@router.get("/config")
-def get_detection_config():
-    """Returns default detection engine configuration."""
-
-    config = DetectionConfig()
-
-    return {
-        "window_seconds": config.window_seconds,
-        "sliding_window_seconds": config.sliding_window_seconds,
-        "port_scan_min_ports": config.port_scan_min_ports,
-        "host_sweep_min_hosts": config.host_sweep_min_hosts,
-        "syn_flood_min_syns": config.syn_flood_min_syns,
-        "ddos_min_sources": config.ddos_min_sources
-    }
+Detection = Annotated[DetectionService, Depends(get_detection_service)]
 
 
-@router.get("/types")
-def get_anomaly_types():
-    """Returns supported anomaly types."""
+@router.get("/config", response_model=ConfigOut)
+def get_detection_config(service: Detection):
+    return ConfigOut.from_domain(service.config)
 
-    return {"types": [anomaly.value for anomaly in AnomalyType]}
+
+@router.put("/config", response_model=ConfigOut)
+def replace_detection_config(payload: ThresholdsIn, service: Detection):
+    return ConfigOut.from_domain(service.replace_thresholds(payload.model_dump()))
+
+
+@router.patch("/config", response_model=ConfigOut)
+def update_detection_config(payload: ThresholdsPatch, service: Detection):
+    return ConfigOut.from_domain(service.patch_thresholds(payload.model_dump(exclude_unset=True)))
+
+
+@router.patch("/impact", response_model=ConfigOut)
+def update_impact(payload: ImpactPatch, service: Detection):
+    return ConfigOut.from_domain(service.patch_impact(payload.root))
+
+
+@router.put("/protected-networks", response_model=ConfigOut)
+def replace_protected_networks(payload: ProtectedNetworksIn, service: Detection):
+    return ConfigOut.from_domain(service.set_protected_networks(payload.cidrs))
+
+
+@router.post("/reset", status_code=status.HTTP_204_NO_CONTENT)
+def reset_detection(service: Annotated[AnalysisService, Depends(get_analysis_service)]):
+    service.reset()

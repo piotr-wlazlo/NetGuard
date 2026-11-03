@@ -27,6 +27,11 @@ class AlertStatus(str, Enum):
     FALSE_POSITIVE = "FALSE_POSITIVE"
 
 
+class AlertSort(str, Enum):
+    PRIORITY = "priority"
+    NEWEST = "newest"
+
+
 OPEN_ALERT_STATUSES = (AlertStatus.NEW, AlertStatus.ACKNOWLEDGED)
 
 DISTRIBUTED_TYPES = ("SYN_FLOOD", "DDOS")

@@ -1,15 +1,10 @@
-from dataclasses import asdict
+from typing import Annotated
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from netguard.alert_engine import AlertEngine
-from netguard.api.schemas import (
-    AlertOut,
-    AnalysisRequest,
-    AnalysisResponse,
-    DetectionOut,
-)
-from netguard.detection.engine import DetectionEngine
+from netguard.api.dependencies import get_analysis_service
+from netguard.api.schemas import AlertOut, AnalysisRequest, AnalysisResponse, DetectionOut
+from netguard.services import AnalysisService
 
 
 router = APIRouter(
@@ -19,41 +14,16 @@ router = APIRouter(
 
 
 @router.post("/flows", response_model=AnalysisResponse)
-def analyze_flows(payload: AnalysisRequest):
-    """Analyzes a batch of network flows."""
-
-    flows = [flow.to_domain() for flow in payload.flows]
-
-    engine = DetectionEngine()
-    results = list(engine.detect(flows))
-
-    alerts = list(
-        AlertEngine(
-            window_seconds=engine.config.window_seconds
-        ).process(results)
-    )
+def analyze_flows(
+    payload: AnalysisRequest,
+    service: Annotated[AnalysisService, Depends(get_analysis_service)],
+):
+    result = service.analyze([flow.to_domain() for flow in payload.flows])
 
     return AnalysisResponse(
-        flow_count=len(flows),
-        detection_count=len(results),
-        alert_count=len(alerts),
-        detections=[
-            DetectionOut(
-                source_ip=r.flow.source_ip,
-                destination_ip=r.flow.destination_ip,
-                detection_method=r.detection.detection_method,
-                anomaly_type=r.detection.anomaly_type,
-                severity=r.detection.severity,
-                confidence=r.detection.confidence,
-                explanation=r.detection.explanation,
-                risk_score=r.risk_score,
-                window_start=r.window_start,
-                window_end=r.window_end,
-            )
-            for r in results
-        ],
-        alerts=[
-            AlertOut(**asdict(a))
-            for a in alerts
-        ],
+        flow_count=result.flow_count,
+        detection_count=len(result.detections),
+        alert_count=len(result.alerts),
+        detections=[DetectionOut.from_result(r) for r in result.detections],
+        alerts=[AlertOut.from_domain(a) for a in result.alerts],
     )
