@@ -57,6 +57,7 @@ class AlertEngine:
         self.alerts = []
         self.suppressed_groups = 0
         self._last = {}
+        self._last_id = 0
 
     def process(self, results: Iterable[DetectionResult]) -> Iterator[Alert]:
         pending, current = {}, None
@@ -96,8 +97,17 @@ class AlertEngine:
         self.alerts.append(alert)
         return alert
 
+    def delete_alert(self, alert_id):
+        alert = self.get_alert(alert_id)
+        if alert is None:
+            raise KeyError(alert_id)
+        self.alerts.remove(alert)
+        self._last = {key: last for key, last in self._last.items() if last[1] is not alert}
+        return alert
+
     def _next_id(self):
-        return len(self.alerts) + 1
+        self._last_id += 1
+        return self._last_id
 
     def _flush(self, pending):
         created = []

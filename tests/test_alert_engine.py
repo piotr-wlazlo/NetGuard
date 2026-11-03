@@ -95,6 +95,53 @@ def test_add_alert_assigns_sequential_ids():
     assert manual.group_key == f"manual|{manual.id}"
 
 
+def test_delete_alert_removes_only_that_alert():
+    engine = AlertEngine()
+    first = engine.add_alert("first", "", Priority.P1)
+    second = engine.add_alert("second", "", Priority.P2)
+
+    assert engine.delete_alert(first.id) is first
+
+    assert engine.alerts == [second]
+    assert engine.get_alert(first.id) is None
+
+
+def test_delete_unknown_alert_raises_key_error():
+    with pytest.raises(KeyError):
+        AlertEngine().delete_alert(42)
+
+
+def test_ids_are_not_reused_after_delete():
+    engine = AlertEngine()
+    first = engine.add_alert("first", "", Priority.P1)
+    second = engine.add_alert("second", "", Priority.P2)
+    engine.delete_alert(first.id)
+
+    third = engine.add_alert("third", "", Priority.P3)
+
+    assert third.id not in (first.id, second.id)
+    assert [a.id for a in engine.alerts] == [second.id, third.id]
+
+
+def test_deleted_alert_no_longer_suppresses_its_group():
+    engine = AlertEngine()
+    created = list(engine.process([result(window=0)]))
+    assert list(engine.process([result(window=1)])) == []
+
+    engine.delete_alert(created[0].id)
+
+    assert len(list(engine.process([result(window=2)]))) == 1
+
+
+def test_reset_restarts_ids():
+    engine = AlertEngine()
+    engine.add_alert("first", "", Priority.P1)
+
+    engine.reset()
+
+    assert engine.add_alert("again", "", Priority.P1).id == 1
+
+
 def test_reset_clears_alerts_and_suppression():
     engine = AlertEngine()
     list(engine.process([result(window=0)]))

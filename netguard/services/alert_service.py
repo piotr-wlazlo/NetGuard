@@ -3,7 +3,7 @@ from typing import Iterable
 
 from netguard.alert_engine import AlertEngine
 from netguard.domain import Alert, AlertSort, AlertStatus, DetectionResult, Priority
-from netguard.services.errors import InvalidTransitionError, NotFoundError
+from netguard.services.errors import NotFoundError
 
 
 class AlertService:
@@ -34,14 +34,12 @@ class AlertService:
             alert.title, alert.description, alert.priority = title, description, Priority(priority)
             return alert
 
-    def change_status(self, alert_id: int, status: AlertStatus) -> Alert:
+    def delete(self, alert_id: int) -> None:
         with self._lock:
             try:
-                return self._engine.set_status(alert_id, status)
+                self._engine.delete_alert(alert_id)
             except KeyError as error:
                 raise NotFoundError(f"Alert {alert_id} not found.") from error
-            except ValueError as error:
-                raise InvalidTransitionError(str(error)) from error
 
     def reset(self) -> None:
         with self._lock:

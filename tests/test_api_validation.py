@@ -61,10 +61,25 @@ def test_invalid_port_rejected(client):
 CONFIG_URL = "/api/v1/detection/config"
 
 
-def test_patch_window_inversion_rejected_and_config_unchanged(client):
-    before = client.get(CONFIG_URL).json()
+THRESHOLD_KEYS = (
+    "port_scan_min_ports", "host_sweep_min_hosts", "syn_flood_min_syns",
+    "syn_flood_half_open_ratio", "ddos_min_sources", "exfiltration_min_bytes",
+    "exfiltration_min_ratio", "z_threshold", "min_baseline_windows", "mad_floor",
+    "window_seconds", "sliding_window_seconds", "ml_score_threshold",
+)
 
-    response = client.patch(CONFIG_URL, json={"window_seconds": 600})
+
+def thresholds_payload(client):
+    config = client.get(CONFIG_URL).json()
+    return {k: config[k] for k in THRESHOLD_KEYS}
+
+
+def test_replace_window_inversion_rejected_and_config_unchanged(client):
+    before = client.get(CONFIG_URL).json()
+    payload = thresholds_payload(client)
+    payload["window_seconds"] = 600
+
+    response = client.put(CONFIG_URL, json=payload)
 
     assert response.status_code == 422
     after = client.get(CONFIG_URL)
@@ -72,22 +87,8 @@ def test_patch_window_inversion_rejected_and_config_unchanged(client):
     assert after.json() == before
 
 
-def test_patch_null_value_rejected(client):
-    assert client.patch(CONFIG_URL, json={"z_threshold": None}).status_code == 422
-
-
-def test_patch_empty_body_rejected(client):
-    assert client.patch(CONFIG_URL, json={}).status_code == 422
-
-
 def test_replace_detection_config_negative_value(client):
-    payload = client.get(CONFIG_URL).json()
-    payload = {k: payload[k] for k in (
-        "port_scan_min_ports", "host_sweep_min_hosts", "syn_flood_min_syns",
-        "syn_flood_half_open_ratio", "ddos_min_sources", "exfiltration_min_bytes",
-        "exfiltration_min_ratio", "z_threshold", "min_baseline_windows", "mad_floor",
-        "window_seconds", "sliding_window_seconds", "ml_score_threshold",
-    )}
+    payload = thresholds_payload(client)
     payload["port_scan_min_ports"] = -1
 
     response = client.put(CONFIG_URL, json=payload)

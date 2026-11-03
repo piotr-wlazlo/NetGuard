@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from netguard.api.routers import alerts, analysis, detection
-from netguard.services import InvalidConfigError, InvalidTransitionError, NotFoundError
+from netguard.services import InvalidConfigError, NotFoundError
 
 app = FastAPI(
     title="NetGuard API",
@@ -14,11 +14,6 @@ app = FastAPI(
 @app.exception_handler(NotFoundError)
 def not_found_handler(request: Request, error: NotFoundError):
     return JSONResponse(status_code=404, content={"detail": str(error)})
-
-
-@app.exception_handler(InvalidTransitionError)
-def invalid_transition_handler(request: Request, error: InvalidTransitionError):
-    return JSONResponse(status_code=409, content={"detail": str(error)})
 
 
 @app.exception_handler(InvalidConfigError)

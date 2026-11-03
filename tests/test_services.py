@@ -1,7 +1,6 @@
 import pytest
 
-from netguard.domain import AnomalyType
-from netguard.services import AlertService, AnalysisService, DetectionService, InvalidConfigError, InvalidTransitionError, NotFoundError
+from netguard.services import AlertService, AnalysisService, DetectionService, InvalidConfigError, NotFoundError
 from tests.helpers import make_flow
 
 
@@ -23,38 +22,38 @@ def test_alerts_persist_across_requests():
     assert len(service.alerts.list()) == 1
 
 
-def test_patch_thresholds_changes_detection():
+def test_replace_thresholds_changes_detection():
     service = make_analysis()
     assert service.analyze(port_scan(25)).alerts == []
 
-    service.detection.patch_thresholds({"port_scan_min_ports": 20})
+    service.detection.replace_thresholds({"port_scan_min_ports": 20})
     service.reset()
 
     assert len(service.analyze(port_scan(25)).alerts) == 1
 
 
-def test_patch_thresholds_rejects_unknown_field():
+def test_replace_thresholds_rejects_unknown_field():
     with pytest.raises(InvalidConfigError):
-        DetectionService().patch_thresholds({"impact": {}})
+        DetectionService().replace_thresholds({"impact": {}})
 
 
-def test_patch_thresholds_rejects_window_inversion():
+def test_replace_thresholds_rejects_window_inversion():
     service = DetectionService()
     before = service.config
 
     with pytest.raises(InvalidConfigError):
-        service.patch_thresholds({"window_seconds": 600})
+        service.replace_thresholds({"window_seconds": 600})
 
     assert service.config == before
 
 
 def test_window_change_clears_history_but_keeps_other_changes():
     service = make_analysis()
-    service.detection.patch_thresholds({"z_threshold": 5.0})
+    service.detection.replace_thresholds({"z_threshold": 5.0})
     service.analyze(port_scan(150))
     assert len(service.alerts.list()) == 1
 
-    config = service.detection.patch_thresholds({"window_seconds": 30})
+    config = service.detection.replace_thresholds({"window_seconds": 30})
     duplicate = service.analyze(port_scan(150))
 
     assert config.z_threshold == 5.0 and config.window_seconds == 30
@@ -71,39 +70,29 @@ def test_protected_networks_raise_risk():
     assert protected_risk > plain_risk
 
 
-def test_patch_impact_keeps_other_weights():
-    service = DetectionService()
-    before = dict(service.config.impact)
-
-    config = service.patch_impact({"PORT_SCAN": 0.1})
-
-    assert config.impact[AnomalyType.PORT_SCAN] == 0.1
-    assert config.impact[AnomalyType.DDOS] == before[AnomalyType.DDOS]
-
-
-def test_alert_service_errors():
+def test_alert_service_delete():
     service = AlertService()
     alert = service.create("manual", "", "P3")
-    service.change_status(alert.id, "RESOLVED")
 
+    service.delete(alert.id)
+
+    assert service.list() == []
     with pytest.raises(NotFoundError):
-        service.get(99)
-    with pytest.raises(InvalidTransitionError):
-        service.change_status(alert.id, "NEW")
+        service.get(alert.id)
+    with pytest.raises(NotFoundError):
+        service.delete(alert.id)
 
 
-def test_concurrent_impact_patches_do_not_lose_updates():
+def test_concurrent_threshold_updates_do_not_lose_updates():
     import threading
 
     service = DetectionService()
-    types = [AnomalyType.PORT_SCAN, AnomalyType.DDOS, AnomalyType.SYN_FLOOD, AnomalyType.HOST_SWEEP]
-    threads = [
-        threading.Thread(target=service.patch_impact, args=({t.value: 0.1 + i / 100},))
-        for i, t in enumerate(types)
-    ]
+    updates = [{"z_threshold": 4.0}, {"ml_score_threshold": 0.7}, {"mad_floor": 0.2}, {"port_scan_min_ports": 50}]
+    threads = [threading.Thread(target=service.replace_thresholds, args=(u,)) for u in updates]
     for t in threads:
         t.start()
     for t in threads:
         t.join()
 
-    assert all(service.config.impact[t] == 0.1 + i / 100 for i, t in enumerate(types))
+    config = service.config
+    assert all(getattr(config, field) == value for u in updates for field, value in u.items())

@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 
 from netguard.api.dependencies import get_analysis_service, get_detection_service
-from netguard.api.schemas import ConfigOut, ImpactPatch, ProtectedNetworksIn, ThresholdsIn, ThresholdsPatch
+from netguard.api.schemas import ConfigOut, ProtectedNetworksIn, ThresholdsIn
 from netguard.services import AnalysisService, DetectionService
 
 
@@ -23,16 +23,6 @@ def get_detection_config(service: Detection):
 @router.put("/config", response_model=ConfigOut)
 def replace_detection_config(payload: ThresholdsIn, service: Detection):
     return ConfigOut.from_domain(service.replace_thresholds(payload.model_dump()))
-
-
-@router.patch("/config", response_model=ConfigOut)
-def update_detection_config(payload: ThresholdsPatch, service: Detection):
-    return ConfigOut.from_domain(service.patch_thresholds(payload.model_dump(exclude_unset=True)))
-
-
-@router.patch("/impact", response_model=ConfigOut)
-def update_impact(payload: ImpactPatch, service: Detection):
-    return ConfigOut.from_domain(service.patch_impact(payload.root))
 
 
 @router.put("/protected-networks", response_model=ConfigOut)

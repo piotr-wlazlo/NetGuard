@@ -4,7 +4,7 @@ from ipaddress import IPv4Address, ip_network
 from typing import Literal
 
 from pydantic import (
-    AwareDatetime, BaseModel, ConfigDict, Field, RootModel, field_validator, model_validator,
+    AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator,
 )
 
 from netguard.domain import (
@@ -136,12 +136,6 @@ class AlertUpdate(BaseModel):
     priority: Priority
 
 
-class AlertStatusPatch(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    status: AlertStatus
-
-
 # --- Detection config -------------------------------------------------------
 
 class _ThresholdFields(BaseModel):
@@ -185,50 +179,6 @@ class ThresholdsIn(_ThresholdFields):
         if self.sliding_window_seconds < self.window_seconds:
             raise ValueError("sliding_window_seconds must be >= window_seconds")
         return self
-
-
-class ThresholdsPatch(BaseModel):
-    """Any non-empty subset of thresholds (PATCH). Explicit nulls are rejected."""
-    model_config = ConfigDict(extra="forbid")
-
-    @model_validator(mode="before")
-    @classmethod
-    def reject_empty_and_null(cls, data):
-        if isinstance(data, dict):
-            if not data:
-                raise ValueError("at least one threshold is required")
-            nulls = sorted(k for k, v in data.items() if v is None)
-            if nulls:
-                raise ValueError(f"null is not allowed for: {nulls}")
-        return data
-
-    port_scan_min_ports: int = Field(default=None, ge=1)
-    host_sweep_min_hosts: int = Field(default=None, ge=1)
-    syn_flood_min_syns: int = Field(default=None, ge=1)
-    syn_flood_half_open_ratio: float = Field(default=None, ge=0, le=1)
-    ddos_min_sources: int = Field(default=None, ge=1)
-    exfiltration_min_bytes: int = Field(default=None, ge=1)
-    exfiltration_min_ratio: float = Field(default=None, gt=0)
-    z_threshold: float = Field(default=None, gt=0)
-    min_baseline_windows: int = Field(default=None, ge=0)
-    mad_floor: float = Field(default=None, gt=0)
-    window_seconds: int = Field(default=None, ge=1)
-    sliding_window_seconds: int = Field(default=None, ge=1)
-    ml_score_threshold: float = Field(default=None, ge=0, le=1)
-
-
-class ImpactPatch(RootModel[dict[AnomalyType, float]]):
-    """Partial impact weights, e.g. {"PORT_SCAN": 0.8}."""
-
-    @field_validator("root")
-    @classmethod
-    def validate_weights(cls, value):
-        if not value:
-            raise ValueError("at least one impact weight is required")
-        for anomaly, weight in value.items():
-            if not 0 <= weight <= 1:
-                raise ValueError(f"impact for {anomaly.value} must be between 0 and 1")
-        return value
 
 
 class ProtectedNetworksIn(BaseModel):

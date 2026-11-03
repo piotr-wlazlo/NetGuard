@@ -182,53 +182,54 @@ def test_replace_alert_not_found(client):
     assert response.status_code == 404
 
 
-# --- PATCH --------------------------------------------------------------------
+# --- DELETE -------------------------------------------------------------------
 
-def test_patch_detection_config(client):
-    response = client.patch("/api/v1/detection/config", json={"z_threshold": 4.0})
+def test_delete_alert(client, alert_id):
+    response = client.delete(f"/api/v1/alerts/{alert_id}")
 
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["z_threshold"] == 4.0
-    assert body["port_scan_min_ports"] == 100
-
-
-def test_patch_detection_config_invalid_value(client):
-    response = client.patch("/api/v1/detection/config", json={"port_scan_min_ports": 0})
-
-    assert response.status_code == 422
+    assert response.status_code == 204
+    assert response.content == b""
+    assert client.get(f"/api/v1/alerts/{alert_id}").status_code == 404
+    assert client.get("/api/v1/alerts").json() == []
 
 
-def test_patch_impact(client):
-    response = client.patch("/api/v1/detection/impact", json={"PORT_SCAN": 0.8})
+def test_delete_alert_keeps_other_alerts(client):
+    first = client.post("/api/v1/alerts", json={"title": "first", "priority": "P1"}).json()
+    second = client.post("/api/v1/alerts", json={"title": "second", "priority": "P2"}).json()
 
-    assert response.status_code == 200, response.text
-    impact = response.json()["impact"]
-    assert impact["PORT_SCAN"] == 0.8
-    assert impact["DDOS"] == 0.9
+    assert client.delete(f"/api/v1/alerts/{first['id']}").status_code == 204
 
-
-def test_patch_impact_unknown_anomaly_type(client):
-    response = client.patch("/api/v1/detection/impact", json={"TELEPORT": 0.5})
-
-    assert response.status_code == 422
+    assert [a["id"] for a in client.get("/api/v1/alerts").json()] == [second["id"]]
 
 
-def test_change_alert_status(client, alert_id):
-    url = f"/api/v1/alerts/{alert_id}/status"
+def test_delete_alert_does_not_reuse_id(client):
+    first = client.post("/api/v1/alerts", json={"title": "first", "priority": "P1"}).json()
+    second = client.post("/api/v1/alerts", json={"title": "second", "priority": "P2"}).json()
+    client.delete(f"/api/v1/alerts/{first['id']}")
 
-    assert client.patch(url, json={"status": "ACKNOWLEDGED"}).json()["status"] == "ACKNOWLEDGED"
-    response = client.patch(url, json={"status": "RESOLVED"})
+    third = client.post("/api/v1/alerts", json={"title": "third", "priority": "P3"}).json()
 
-    assert response.status_code == 200
-    assert response.json()["status"] == "RESOLVED"
+    assert third["id"] not in (first["id"], second["id"])
+    assert client.get(f"/api/v1/alerts/{second['id']}").json()["title"] == "second"
 
 
-def test_change_alert_status_invalid_transition(client, alert_id):
-    url = f"/api/v1/alerts/{alert_id}/status"
-    client.patch(url, json={"status": "RESOLVED"})
+def test_delete_alert_not_found(client):
+    response = client.delete("/api/v1/alerts/999")
 
-    response = client.patch(url, json={"status": "NEW"})
+    assert response.status_code == 404
+    assert "999" in response.json()["detail"]
 
-    assert response.status_code == 409
-    assert "RESOLVED" in response.json()["detail"]
+
+def test_delete_alert_twice(client, alert_id):
+    url = f"/api/v1/alerts/{alert_id}"
+    assert client.delete(url).status_code == 204
+
+    assert client.delete(url).status_code == 404
+
+
+def test_delete_alert_invalid_id(client):
+    assert client.delete("/api/v1/alerts/abc").status_code == 422
+
+
+def test_delete_alerts_collection_invalid_method(client):
+    assert client.delete("/api/v1/alerts").status_code == 405

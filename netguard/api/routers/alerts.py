@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, status
 
 from netguard.api.dependencies import get_alert_service
-from netguard.api.schemas import AlertCreate, AlertOut, AlertStatusPatch, AlertUpdate
+from netguard.api.schemas import AlertCreate, AlertOut, AlertUpdate
 from netguard.domain import AlertSort, AlertStatus
 from netguard.services import AlertService
 
@@ -42,6 +42,6 @@ def replace_alert(alert_id: int, payload: AlertUpdate, service: Alerts):
     )
 
 
-@router.patch("/{alert_id}/status", response_model=AlertOut)
-def change_alert_status(alert_id: int, payload: AlertStatusPatch, service: Alerts):
-    return AlertOut.from_domain(service.change_status(alert_id, payload.status))
+@router.delete("/{alert_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_alert(alert_id: int, service: Alerts):
+    service.delete(alert_id)
