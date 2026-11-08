@@ -4,13 +4,13 @@ import pytest
 
 from redis.exceptions import RedisError
 
-from netguard.redis_conn import create_redis_client
-from netguard.packet_stream import (
+from netguard.data_processing.redis_conn import create_redis_client
+from netguard.data_processing.packet_stream import (
     publish_packet,
     publish_import_finished,
     read_packets
 )
-from netguard.flow_processor import extract_flow
+from netguard.data_processing.flow_processor import extract_flow
 
 
 @pytest.fixture(scope="session")
@@ -128,9 +128,9 @@ def test_redis_to_flow_processor(redis_stream, packet):
     flows = list(extract_flow(read_packets(client, stream_name)))
 
     assert len(flows) == 1
-    assert flows[0]["packet_count"] == 2
-    assert flows[0]["byte_count"] == 300
-    assert flows[0]["duration_ms"] == 10000
+    assert flows[0].packet_count == 2
+    assert flows[0].byte_count == 300
+    assert flows[0].duration_ms == 10000
 
 def test_import_without_finish(redis_stream, packet):
     client, stream_name = redis_stream

@@ -1,6 +1,2 @@
-class NotFoundError(Exception):
-    ...
-
-
 class InvalidConfigError(ValueError):
     ...

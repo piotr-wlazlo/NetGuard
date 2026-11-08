@@ -1,19 +1,13 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-
-from netguard.api.routers import alerts, analysis, detection
-from netguard.services import InvalidConfigError, NotFoundError
+from netguard.api.routers import detection
+from netguard.services import InvalidConfigError
 
 app = FastAPI(
     title="NetGuard API",
     version="0.1.0",
-    description="Network anomaly detection API"
+    description="Network anomaly detection API",
 )
-
-
-@app.exception_handler(NotFoundError)
-def not_found_handler(request: Request, error: NotFoundError):
-    return JSONResponse(status_code=404, content={"detail": str(error)})
 
 
 @app.exception_handler(InvalidConfigError)
@@ -26,6 +20,4 @@ def health():
     return {"status": "ok"}
 
 
-app.include_router(analysis.router)
 app.include_router(detection.router)
-app.include_router(alerts.router)

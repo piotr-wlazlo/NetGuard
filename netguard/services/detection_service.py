@@ -1,54 +1,55 @@
-import dataclasses
-import threading
-from ipaddress import ip_network
-from typing import Callable, Iterable
+from datetime import datetime, timezone
+from typing import Iterable, Optional
+from sqlmodel import Session, delete, select
 
-from netguard.detection.engine import DetectionEngine
-from netguard.domain import DetectionConfig, DetectionResult, Flow
+from netguard.detection.config import DEFAULT_PARAMETERS, seed_default_config
+from netguard.detection.detection_engine import DetectionEngine, build_strategy
+from netguard.model.detection import Detection
+from netguard.model.detection_config import DetectionConfig
 from netguard.services.errors import InvalidConfigError
-
-_NON_THRESHOLD_FIELDS = {"impact", "protected_cidrs"}
-_THRESHOLD_FIELDS = {f.name for f in dataclasses.fields(DetectionConfig)} - _NON_THRESHOLD_FIELDS
-_WINDOW_FIELDS = ("window_seconds", "sliding_window_seconds")
 
 
 class DetectionService:
-    def __init__(self, config: DetectionConfig | None = None):
-        self._lock = threading.Lock()
-        self._engine = DetectionEngine(config or DetectionConfig())
+    def detect(
+        self, session: Session, packets: Iterable[dict], method: str = "rules"
+    ) -> list[Detection]:
+        seed_default_config(session)
+        try:
+            strategy = build_strategy(method, session)
+        except ValueError as error:
+            raise InvalidConfigError(str(error)) from error
+        return list(DetectionEngine(strategy, session).detect(packets))
 
-    @property
-    def config(self) -> DetectionConfig:
-        with self._lock:
-            return self._engine.config
+    def get_config(self, session: Session) -> list[DetectionConfig]:
+        seed_default_config(session)
+        statement = select(DetectionConfig).order_by(
+            DetectionConfig.method, DetectionConfig.parameter_name
+        )
+        return list(session.exec(statement).all())
 
-    def detect(self, flows: Iterable[Flow]) -> tuple[list[DetectionResult], DetectionConfig]:
-        with self._lock:
-            config = self._engine.config
-            return list(self._engine.detect(flows)), config
-
-    def replace_thresholds(self, values: dict) -> DetectionConfig:
-        unknown = set(values) - _THRESHOLD_FIELDS
+    def replace_parameters(
+        self, session: Session, values: dict[Optional[str], dict[str, float]]
+    ) -> list[DetectionConfig]:
+        normalized = {(m or "common"): params for m, params in values.items()}
+        unknown = sorted(
+            f"{method}.{name}"
+            for method, parameters in normalized.items()
+            for name in parameters
+            if name not in DEFAULT_PARAMETERS.get(method, {})
+        )
         if unknown:
-            raise InvalidConfigError(f"Unknown threshold fields: {sorted(unknown)}.")
-        return self._update(lambda old: values)
+            raise InvalidConfigError(f"Unknown parameters: {unknown}.")
 
-    def set_protected_networks(self, cidrs: list[str]) -> DetectionConfig:
-        networks = tuple(ip_network(c, strict=False) for c in cidrs)
-        return self._update(lambda old: {"protected_cidrs": networks})
+        rows = {(r.method or "common", r.parameter_name): r for r in self.get_config(session)}
+        now = datetime.now(timezone.utc)
+        for method, parameters in normalized.items():
+            for name, value in parameters.items():
+                row = rows[(method, name)]
+                row.parameter_value, row.updated_at = str(value), now
+        session.commit()
+        return self.get_config(session)
 
-    def reset(self) -> None:
-        with self._lock:
-            self._engine = DetectionEngine(self._engine.config)
-
-    def _update(self, changes: Callable[[DetectionConfig], dict]) -> DetectionConfig:
-        with self._lock:
-            old = self._engine.config
-            new = dataclasses.replace(old, **changes(old))
-            if new.sliding_window_seconds < new.window_seconds:
-                raise InvalidConfigError("sliding_window_seconds must be >= window_seconds")
-            if any(getattr(old, f) != getattr(new, f) for f in _WINDOW_FIELDS):
-                self._engine = DetectionEngine(new)
-            else:
-                self._engine.config = new
-            return new
+    def reset(self, session: Session) -> list[DetectionConfig]:
+        session.exec(delete(DetectionConfig))
+        session.commit()
+        return self.get_config(session)
