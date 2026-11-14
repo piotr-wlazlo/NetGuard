@@ -7,6 +7,7 @@ from netguard.detection.detection_engine import DetectionEngine, build_strategy
 from netguard.model.detection import Detection
 from netguard.model.detection_config import DetectionConfig
 from netguard.services.errors import InvalidConfigError
+from netguard.model.network_flow import NetworkFlow
 
 
 class DetectionService:
@@ -53,3 +54,28 @@ class DetectionService:
         session.exec(delete(DetectionConfig))
         session.commit()
         return self.get_config(session)
+
+    def detect_flows(
+        self,
+        session: Session,
+        flows: list[NetworkFlow],
+        method: str = "rules"
+    ) -> list[Detection]:
+        """Analyzes already extracted network flows."""
+
+        seed_default_config(session)
+
+        try:
+            strategy = build_strategy(method, session)
+        except ValueError as error:
+            raise InvalidConfigError(str(error)) from error
+
+        session.add_all(flows)
+        session.flush()
+
+        detections = strategy.detect_anomalies(flows)
+
+        session.add_all(detections)
+        session.commit()
+
+        return detections

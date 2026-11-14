@@ -8,6 +8,5 @@ joblib==1.6.0
 fastapi>=0.110,<1
 uvicorn[standard]>=0.30,<1
 httpx2
-sqlmodelpsycopg[binary]
-
 sqlmodel
+psycopg[binary]
