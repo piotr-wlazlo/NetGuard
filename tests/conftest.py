@@ -30,8 +30,10 @@ def client(db_engine):
     from netguard.api import dependencies
     from netguard.api.main import app
     from netguard.services import DetectionService
+    from netguard.services.alert_service import AlertService
 
     detection = DetectionService()
+    alerts = AlertService()
 
     def override_get_session():
         with Session(db_engine) as session:
@@ -39,6 +41,7 @@ def client(db_engine):
 
     app.dependency_overrides = {
         dependencies.get_detection_service: lambda: detection,
+        dependencies.get_alert_service: lambda: alerts,
         dependencies.get_session: override_get_session,
     }
     with TestClient(app) as test_client:
