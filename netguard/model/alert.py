@@ -9,6 +9,7 @@ class Alert(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     detection_id: Optional[int] = Field(default=None, foreign_key="detections.id")
+    group_key: Optional[str] = Field(default=None, index=True)
     title: Optional[str] = None
     description: Optional[str] = None
     priority: Optional[str] = None

@@ -101,7 +101,26 @@ class DetectionOut(BaseModel):
     explanation: str | None
 
 
+class AlertOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    detection_id: int | None
+    group_key: str | None
+    title: str | None
+    description: str | None
+    priority: str | None
+    status: str | None
+    created_at: datetime | None
+
+
+class AlertStatusIn(BaseModel):
+    status: str
+
+
 class AnalysisResponse(BaseModel):
     flow_count: int
     detection_count: int
     detections: list[DetectionOut]
+    alert_count: int = 0
+    alerts: list[AlertOut] = Field(default_factory=list)
