@@ -5,6 +5,7 @@ from sqlmodel import Session
 from netguard.api.dependencies import get_detection_service, get_session
 from netguard.api.schemas import ConfigOut, ParametersIn
 from netguard.services import DetectionService
+from netguard.domain import AnomalyType
 
 router = APIRouter(prefix="/api/v1/detection", tags=["detection"])
 
@@ -25,3 +26,8 @@ def replace_detection_config(payload: ParametersIn, service: Detection, session:
 @router.post("/reset", status_code=status.HTTP_204_NO_CONTENT)
 def reset_detection(service: Detection, session: DbSession):
     service.reset(session)
+
+
+@router.get("/types")
+def get_anomaly_types():
+    return {"types": [anomaly.value for anomaly in AnomalyType]}

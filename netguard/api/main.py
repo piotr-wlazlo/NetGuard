@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from netguard.api.routers import detection
+from netguard.api.routers import analysis, detection
 from netguard.services import InvalidConfigError
 
 app = FastAPI(
@@ -20,4 +20,5 @@ def health():
     return {"status": "ok"}
 
 
+app.include_router(analysis.router)
 app.include_router(detection.router)
