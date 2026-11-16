@@ -1,45 +1,33 @@
 from typing import Annotated
-
 from fastapi import APIRouter, Depends, status
+from sqlmodel import Session
 
-from netguard.api.dependencies import get_analysis_service, get_detection_service
-from netguard.api.schemas import ConfigOut, ImpactPatch, ProtectedNetworksIn, ThresholdsIn, ThresholdsPatch
-from netguard.services import AnalysisService, DetectionService
+from netguard.api.dependencies import get_detection_service, get_session
+from netguard.api.schemas import ConfigOut, ParametersIn
+from netguard.services import DetectionService
+from netguard.domain import AnomalyType
 
-
-router = APIRouter(
-    prefix="/api/v1/detection",
-    tags=["detection"]
-)
+router = APIRouter(prefix="/api/v1/detection", tags=["detection"])
 
 Detection = Annotated[DetectionService, Depends(get_detection_service)]
+DbSession = Annotated[Session, Depends(get_session)]
 
 
 @router.get("/config", response_model=ConfigOut)
-def get_detection_config(service: Detection):
-    return ConfigOut.from_domain(service.config)
+def get_detection_config(service: Detection, session: DbSession):
+    return ConfigOut.from_rows(service.get_config(session))
 
 
 @router.put("/config", response_model=ConfigOut)
-def replace_detection_config(payload: ThresholdsIn, service: Detection):
-    return ConfigOut.from_domain(service.replace_thresholds(payload.model_dump()))
-
-
-@router.patch("/config", response_model=ConfigOut)
-def update_detection_config(payload: ThresholdsPatch, service: Detection):
-    return ConfigOut.from_domain(service.patch_thresholds(payload.model_dump(exclude_unset=True)))
-
-
-@router.patch("/impact", response_model=ConfigOut)
-def update_impact(payload: ImpactPatch, service: Detection):
-    return ConfigOut.from_domain(service.patch_impact(payload.root))
-
-
-@router.put("/protected-networks", response_model=ConfigOut)
-def replace_protected_networks(payload: ProtectedNetworksIn, service: Detection):
-    return ConfigOut.from_domain(service.set_protected_networks(payload.cidrs))
+def replace_detection_config(payload: ParametersIn, service: Detection, session: DbSession):
+    return ConfigOut.from_rows(service.replace_parameters(session, payload.to_values()))
 
 
 @router.post("/reset", status_code=status.HTTP_204_NO_CONTENT)
-def reset_detection(service: Annotated[AnalysisService, Depends(get_analysis_service)]):
-    service.reset()
+def reset_detection(service: Detection, session: DbSession):
+    service.reset(session)
+
+
+@router.get("/types")
+def get_anomaly_types():
+    return {"types": [anomaly.value for anomaly in AnomalyType]}

@@ -1,40 +1,65 @@
-from dataclasses import asdict
+from typing import Annotated
+from pydantic import BaseModel, ConfigDict, Field
+from netguard.domain import AnomalyType
+from netguard.model.detection_config import DetectionConfig
 from datetime import datetime
-from ipaddress import IPv4Address, ip_network
+from ipaddress import IPv4Address
 from typing import Literal
+from pydantic import AwareDatetime, ConfigDict, model_validator
 
-from pydantic import (
-    AwareDatetime, BaseModel, ConfigDict, Field, RootModel, field_validator, model_validator,
-)
+from netguard.model.network_flow import NetworkFlow
+COMMON = "common"
+PositiveValues = dict[str, Annotated[float, Field(gt=0)]]
 
-from netguard.domain import (
-    Alert, AlertStatus, AnomalyType, DetectionConfig, DetectionResult, Flow, Priority,
-)
+
+class ParametersIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    common: PositiveValues = Field(default_factory=dict)
+    statistical: PositiveValues = Field(default_factory=dict)
+    ml: PositiveValues = Field(default_factory=dict)
+
+    def to_values(self) -> dict[str, dict[str, float]]:
+        return {COMMON: self.common, "statistical": self.statistical, "ml": self.ml}
+
+
+class ConfigOut(BaseModel):
+    batch_size: int
+    parameters: dict[str, dict[str, float]]
+    anomaly_types: list[AnomalyType]
+
+    @classmethod
+    def from_rows(cls, rows: list[DetectionConfig]) -> "ConfigOut":
+        parameters: dict[str, dict[str, float]] = {}
+        for row in rows:
+            parameters.setdefault(row.method or COMMON, {})[row.parameter_name] = float(
+                row.parameter_value
+            )
+        return cls(
+            batch_size=int(parameters[COMMON]["batch_size"]),
+            parameters=parameters,
+            anomaly_types=list(AnomalyType),
+        )
 
 
 class FlowInput(BaseModel):
-    """Network flow representation accepted by the HTTP API."""
-
     source_ip: IPv4Address
     destination_ip: IPv4Address
+
     source_port: int | None = Field(default=None, ge=0, le=65535)
     destination_port: int | None = Field(default=None, ge=0, le=65535)
+
     protocol: Literal["TCP", "UDP", "ICMP"]
+
     packet_count: int = Field(ge=1)
     byte_count: int = Field(ge=1)
+
     start_time: AwareDatetime
     end_time: AwareDatetime
     duration_ms: float = Field(ge=0)
-    syn_count: int = Field(default=0, ge=0)
-    ack_count: int = Field(default=0, ge=0)
-    rst_count: int = Field(default=0, ge=0)
-    fin_count: int = Field(default=0, ge=0)
-    fwd_packets: int = Field(default=0, ge=0)
-    fwd_bytes: int = Field(default=0, ge=0)
-    bwd_packets: int = Field(default=0, ge=0)
-    bwd_bytes: int = Field(default=0, ge=0)
-    source_type: str = ""
-    source_name: str = ""
+
+    source_type: str = "api"
+    source_name: str = "manual"
 
     @model_validator(mode="after")
     def validate_flow(self):
@@ -44,9 +69,7 @@ class FlowInput(BaseModel):
         if self.protocol in ("TCP", "UDP") and (
             self.source_port is None or self.destination_port is None
         ):
-            raise ValueError(
-                "TCP/UDP flows must include source and destination ports"
-            )
+            raise ValueError("TCP/UDP flows must include ports")
 
         if self.protocol == "ICMP" and (
             self.source_port is not None or self.destination_port is not None
@@ -55,11 +78,11 @@ class FlowInput(BaseModel):
 
         return self
 
-    def to_domain(self) -> Flow:
+    def to_network_flow(self) -> NetworkFlow:
         data = self.model_dump()
         data["source_ip"] = str(self.source_ip)
         data["destination_ip"] = str(self.destination_ip)
-        return Flow(**data)
+        return NetworkFlow(**data)
 
 
 class AnalysisRequest(BaseModel):
@@ -67,194 +90,18 @@ class AnalysisRequest(BaseModel):
 
 
 class DetectionOut(BaseModel):
-    source_ip: str
-    destination_ip: str
-    detection_method: str
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int | None
+    flow_id: int | None
+    detection_method: str | None
     anomaly_type: str | None
     severity: str | None
-    confidence: float
-    explanation: str
-    risk_score: float
-    window_start: datetime | None
-    window_end: datetime | None
-
-    @classmethod
-    def from_result(cls, result: DetectionResult) -> "DetectionOut":
-        return cls(
-            source_ip=result.flow.source_ip,
-            destination_ip=result.flow.destination_ip,
-            detection_method=result.detection.detection_method,
-            anomaly_type=result.detection.anomaly_type,
-            severity=result.detection.severity,
-            confidence=result.detection.confidence,
-            explanation=result.detection.explanation,
-            risk_score=result.risk_score,
-            window_start=result.window_start,
-            window_end=result.window_end,
-        )
-
-
-class AlertOut(BaseModel):
-    id: int | None
-    title: str
-    description: str
-    priority: Priority
-    group_key: str
-    detection_id: int | None
-    risk_score: float
-    status: AlertStatus
-
-    @classmethod
-    def from_domain(cls, alert: Alert) -> "AlertOut":
-        return cls(**asdict(alert))
+    confidence: float | None
+    explanation: str | None
 
 
 class AnalysisResponse(BaseModel):
     flow_count: int
     detection_count: int
-    alert_count: int
     detections: list[DetectionOut]
-    alerts: list[AlertOut]
-
-
-# --- Alerts -----------------------------------------------------------------
-
-class AlertCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    title: str = Field(min_length=1, max_length=200)
-    description: str = Field(default="", max_length=2000)
-    priority: Priority
-
-
-class AlertUpdate(BaseModel):
-    """Full replacement of the editable alert fields (PUT)."""
-    model_config = ConfigDict(extra="forbid")
-
-    title: str = Field(min_length=1, max_length=200)
-    description: str = Field(max_length=2000)
-    priority: Priority
-
-
-class AlertStatusPatch(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    status: AlertStatus
-
-
-# --- Detection config -------------------------------------------------------
-
-class _ThresholdFields(BaseModel):
-    """Names and types of the tunable thresholds, shared by input and output models."""
-
-    port_scan_min_ports: int
-    host_sweep_min_hosts: int
-    syn_flood_min_syns: int
-    syn_flood_half_open_ratio: float
-    ddos_min_sources: int
-    exfiltration_min_bytes: int
-    exfiltration_min_ratio: float
-    z_threshold: float
-    min_baseline_windows: int
-    mad_floor: float
-    window_seconds: int
-    sliding_window_seconds: int
-    ml_score_threshold: float
-
-
-class ThresholdsIn(_ThresholdFields):
-    """All tunable numeric thresholds; every field required (PUT)."""
-    model_config = ConfigDict(extra="forbid")
-
-    port_scan_min_ports: int = Field(ge=1)
-    host_sweep_min_hosts: int = Field(ge=1)
-    syn_flood_min_syns: int = Field(ge=1)
-    syn_flood_half_open_ratio: float = Field(ge=0, le=1)
-    ddos_min_sources: int = Field(ge=1)
-    exfiltration_min_bytes: int = Field(ge=1)
-    exfiltration_min_ratio: float = Field(gt=0)
-    z_threshold: float = Field(gt=0)
-    min_baseline_windows: int = Field(ge=0)
-    mad_floor: float = Field(gt=0)
-    window_seconds: int = Field(ge=1)
-    sliding_window_seconds: int = Field(ge=1)
-    ml_score_threshold: float = Field(ge=0, le=1)
-
-    @model_validator(mode="after")
-    def validate_windows(self):
-        if self.sliding_window_seconds < self.window_seconds:
-            raise ValueError("sliding_window_seconds must be >= window_seconds")
-        return self
-
-
-class ThresholdsPatch(BaseModel):
-    """Any non-empty subset of thresholds (PATCH). Explicit nulls are rejected."""
-    model_config = ConfigDict(extra="forbid")
-
-    @model_validator(mode="before")
-    @classmethod
-    def reject_empty_and_null(cls, data):
-        if isinstance(data, dict):
-            if not data:
-                raise ValueError("at least one threshold is required")
-            nulls = sorted(k for k, v in data.items() if v is None)
-            if nulls:
-                raise ValueError(f"null is not allowed for: {nulls}")
-        return data
-
-    port_scan_min_ports: int = Field(default=None, ge=1)
-    host_sweep_min_hosts: int = Field(default=None, ge=1)
-    syn_flood_min_syns: int = Field(default=None, ge=1)
-    syn_flood_half_open_ratio: float = Field(default=None, ge=0, le=1)
-    ddos_min_sources: int = Field(default=None, ge=1)
-    exfiltration_min_bytes: int = Field(default=None, ge=1)
-    exfiltration_min_ratio: float = Field(default=None, gt=0)
-    z_threshold: float = Field(default=None, gt=0)
-    min_baseline_windows: int = Field(default=None, ge=0)
-    mad_floor: float = Field(default=None, gt=0)
-    window_seconds: int = Field(default=None, ge=1)
-    sliding_window_seconds: int = Field(default=None, ge=1)
-    ml_score_threshold: float = Field(default=None, ge=0, le=1)
-
-
-class ImpactPatch(RootModel[dict[AnomalyType, float]]):
-    """Partial impact weights, e.g. {"PORT_SCAN": 0.8}."""
-
-    @field_validator("root")
-    @classmethod
-    def validate_weights(cls, value):
-        if not value:
-            raise ValueError("at least one impact weight is required")
-        for anomaly, weight in value.items():
-            if not 0 <= weight <= 1:
-                raise ValueError(f"impact for {anomaly.value} must be between 0 and 1")
-        return value
-
-
-class ProtectedNetworksIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    cidrs: list[str] = Field(max_length=256)
-
-    @field_validator("cidrs")
-    @classmethod
-    def validate_cidrs(cls, value):
-        for cidr in value:
-            try:
-                ip_network(cidr, strict=False)
-            except ValueError as error:
-                raise ValueError(f"invalid CIDR: {cidr}") from error
-        return value
-
-
-class ConfigOut(_ThresholdFields):
-    impact: dict[AnomalyType, float]
-    protected_cidrs: list[str]
-    anomaly_types: list[AnomalyType]
-
-    @classmethod
-    def from_domain(cls, config: DetectionConfig) -> "ConfigOut":
-        data = asdict(config)
-        data["protected_cidrs"] = [str(n) for n in config.protected_cidrs]
-        data["anomaly_types"] = list(AnomalyType)
-        return cls(**data)

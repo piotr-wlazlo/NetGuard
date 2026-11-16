@@ -3,18 +3,18 @@ from datetime import datetime, timezone
 import pytest
 from scapy.all import Ether, IP, TCP, UDP, ICMP, ARP, wrpcap
 
-from netguard.pcap_importer import read_pcap_file, parse_packet
+from netguard.data_processing.pcap_importer import read_pcap_file, parse_packet
 
 
 @pytest.mark.parametrize(
-    "transport, protocol, source_port, destination_port, flags",
+    "transport, protocol, source_port, destination_port",
     [
-        (TCP(sport=50000, dport=80, flags="SA"), "TCP", 50000, 80, "SA"),
-        (UDP(sport=53000, dport=53), "UDP", 53000, 53, ""),
-        (ICMP(), "ICMP", None, None, "")
+        (TCP(sport=50000, dport=80, flags="SA"), "TCP", 50000, 80),
+        (UDP(sport=53000, dport=53), "UDP", 53000, 53),
+        (ICMP(), "ICMP", None, None)
     ]
 )
-def test_parse_packet(transport, protocol, source_port, destination_port, flags):
+def test_parse_packet(transport, protocol, source_port, destination_port):
     packet = (
         Ether()
         / IP(src="192.168.1.10", dst="192.168.1.20")
@@ -33,8 +33,7 @@ def test_parse_packet(transport, protocol, source_port, destination_port, flags)
         "destination_ip": "192.168.1.20",
         "destination_port": destination_port,
         "timestamp": "2023-11-14T22:13:20.000000+00:00",
-        "packet_length": len(packet),
-        "tcp_flags": flags
+        "packet_length": len(packet)
     }
 
 

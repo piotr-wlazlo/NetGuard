@@ -1,6 +1,6 @@
 import pytest
 
-from netguard.packet_validation import validate_packet
+from netguard.data_processing.packet_validation import validate_packet
 
 
 @pytest.fixture
