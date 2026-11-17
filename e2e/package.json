@@ -1,0 +1,24 @@
+{
+  "name": "netguard-e2e",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Testy UI NetGuard (Playwright): wspólny projekt zespołu",
+  "type": "module",
+  "scripts": {
+    "install:browsers": "playwright install chromium",
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug",
+    "report": "playwright show-report",
+    "codegen": "tsx scripts/codegen.ts",
+    "typecheck": "tsc --noEmit",
+    "stack": "tsx scripts/codegen.ts --stack-only"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
