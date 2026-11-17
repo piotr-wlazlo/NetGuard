@@ -21,6 +21,7 @@ export default defineConfig(({ mode }) => {
       globals: true,
       setupFiles: ['./src/test/setup.ts'],
       css: false,
+      coverage: {exclude: ['src/test/**'],}
     },
   }
 })
