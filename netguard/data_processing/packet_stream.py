@@ -74,3 +74,34 @@ def read_packets(client, stream_name, wait_timeout=30):
                     raise ValueError(f"Unknown message type: {message_type}.")
 
                 last_id = message_id
+
+def publish_packets(client, stream_name, packets, batch_size=500, on_batch=None):
+    """Publikuje pakiety paczkami przez pipeline Redisa (jedno połączenie sieciowe na paczkę
+    zamiast jednego na pakiet). Pakiety zebrane przed ewentualnym błędem źródła też są wysyłane.
+    on_batch(liczba_wysłanych) jest wywoływane po każdej wysłanej paczce. Zwraca liczbę pakietów."""
+    if batch_size <= 0:
+        raise ValueError("Batch size must be greater than zero.")
+
+    pipe = client.pipeline(transaction=False)
+    sent = 0
+    pending = 0
+
+    def flush():
+        nonlocal sent, pending
+        if pending:
+            pipe.execute()
+            sent += pending
+            pending = 0
+            if on_batch is not None:
+                on_batch(sent)
+
+    try:
+        for packet in packets:
+            pipe.xadd(stream_name, {"type": "packet", "data": json.dumps(packet, allow_nan=False)})
+            pending += 1
+            if pending >= batch_size:
+                flush()
+    finally:
+        flush()
+
+    return sent
