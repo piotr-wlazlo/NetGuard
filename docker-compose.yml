@@ -40,7 +40,7 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       NETGUARD_INIT_DB: "1"
-      WEB_CONCURRENCY: "1"
+      WEB_CONCURRENCY: "4"
     ports:
       - "8000:8000"
     depends_on:
@@ -65,6 +65,21 @@ services:
       backend:
         condition: service_healthy
     restart: unless-stopped
+
+  # Testy obciążeniowe (uruchamiane tylko na żądanie: --profile loadtest), opis w load_tests/README.md
+  locust:
+    image: locustio/locust
+    profiles: ["loadtest"]
+    working_dir: /mnt/locust
+    volumes:
+      - ./load_tests:/mnt/locust
+    environment:
+      LOCUST_LOCUSTFILE: /mnt/locust/locustfile.py
+      LOCUST_HOST: http://frontend
+    ports:
+      - "8089:8089"
+    depends_on:
+      - frontend
 
 volumes:
   postgres-data:

@@ -101,7 +101,7 @@ class PcapJobStore:
 def _default_session() -> Session:
     from netguard.db import engine
 
-    return Session(engine)
+    return Session(engine, expire_on_commit=False)
 
 
 class PcapService:

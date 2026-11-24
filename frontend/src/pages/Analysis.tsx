@@ -1,21 +1,23 @@
-import { useMemo, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { useAnalyze } from '../api/hooks'
+import { queryKeys, useAnalyze, usePcapJob, useUploadPcap } from '../api/hooks'
 import type { DetectionMethod, FlowInput } from '../api/types'
 import { MethodTag, SeverityBadge } from '../components/Badges'
 import { Meter } from '../components/Charts'
+import { PcapResult } from '../components/PcapResult'
 import { InlineError } from '../components/States'
 import { useToast } from '../components/Toast'
 import { Icon } from '../components/icons'
 import { asSeverity, countBy, toView } from '../lib/alerts'
 import { parseFlowsJson } from '../lib/flows-input'
-import { METHOD_LABELS, formatNumber, plural, typeLabel } from '../lib/format'
+import { METHOD_LABELS, formatBytes, formatNumber, plural, typeLabel } from '../lib/format'
 import { SCENARIOS, generateScenario, getScenario } from '../lib/scenarios'
 import type { ScenarioId } from '../lib/scenarios'
 import { usePageTitle } from '../lib/use-page-title'
 
-type SourceMode = 'scenario' | 'json'
+type SourceMode = 'scenario' | 'json' | 'pcap'
 
 const METHODS: DetectionMethod[] = ['rules', 'statistical', 'ml']
 const METHOD_HINTS: Record<DetectionMethod, string> = {
@@ -26,6 +28,8 @@ const METHOD_HINTS: Record<DetectionMethod, string> = {
 }
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024
+const MAX_PCAP_BYTES = 200 * 1024 * 1024
+const PCAP_EXTENSIONS = ['.pcap', '.pcapng', '.cap']
 const DETECTIONS_PREVIEW = 15
 
 export function Analysis() {
@@ -33,6 +37,9 @@ export function Analysis() {
   const analyze = useAnalyze()
   const toast = useToast()
   const fileInput = useRef<HTMLInputElement>(null)
+  const pcapInput = useRef<HTMLInputElement>(null)
+  const queryClient = useQueryClient()
+  const upload = useUploadPcap()
 
   const [method, setMethod] = useState<DetectionMethod>('rules')
   const [mode, setMode] = useState<SourceMode>('scenario')
@@ -41,6 +48,29 @@ export function Analysis() {
   const [jsonText, setJsonText] = useState('')
   const [jsonErrors, setJsonErrors] = useState<string[]>([])
   const [showAll, setShowAll] = useState(false)
+  const [pcapFile, setPcapFile] = useState<File | null>(null)
+  const [pcapError, setPcapError] = useState<string | null>(null)
+  const [jobId, setJobId] = useState<string | null>(null)
+  const job = usePcapJob(jobId)
+  const jobStatus = job.data?.status
+  const pcapRunning =
+    upload.isPending || (jobId !== null && !job.isError && jobStatus !== 'done' && jobStatus !== 'failed')
+
+  // Po zakończeniu importu: odświeżenie listy alertów i powiadomienie (raz na zadanie)
+  const announced = useRef<string | null>(null)
+  useEffect(() => {
+    const data = job.data
+    if (!data || announced.current === data.job_id) return
+    if (data.status === 'done') {
+      announced.current = data.job_id
+      void queryClient.invalidateQueries({ queryKey: queryKeys.alerts })
+      toast.success(`Import PCAP zakończony: ${data.detection_count} detekcji, ${data.alert_count} nowych alertów.`)
+    } else if (data.status === 'failed') {
+      announced.current = data.job_id
+      void queryClient.invalidateQueries({ queryKey: queryKeys.alerts })
+      toast.error('Import PCAP zakończył się błędem.')
+    }
+  }, [job.data, queryClient, toast])
 
   const scenario = getScenario(scenarioId)
   const countValue = Number(count)
@@ -56,7 +86,37 @@ export function Analysis() {
     setCount(String(getScenario(id).defaultCount))
   }
 
+  function choosePcap(file: File | undefined) {
+    if (!file) return
+    const name = file.name.toLowerCase()
+    if (!PCAP_EXTENSIONS.some((extension) => name.endsWith(extension))) {
+      setPcapFile(null)
+      setPcapError('Wybierz plik z rozszerzeniem .pcap, .pcapng albo .cap.')
+      return
+    }
+    if (file.size > MAX_PCAP_BYTES) {
+      setPcapFile(null)
+      setPcapError(`Plik jest za duży (${formatBytes(file.size)}). Limit to 200 MB.`)
+      return
+    }
+    setPcapFile(file)
+    setPcapError(null)
+  }
+
+  function runPcap() {
+    if (!pcapFile) {
+      setPcapError('Wybierz plik PCAP.')
+      return
+    }
+    setJobId(null)
+    upload.mutate({ file: pcapFile, method }, { onSuccess: (created) => setJobId(created.job_id) })
+  }
+
   function run() {
+    if (mode === 'pcap') {
+      runPcap()
+      return
+    }
     let flows: FlowInput[]
     if (mode === 'scenario') {
       flows = generateScenario(scenarioId, { count: countValue })
@@ -150,6 +210,9 @@ export function Analysis() {
                 <button type="button" aria-pressed={mode === 'json'} onClick={() => setMode('json')}>
                   Własny JSON
                 </button>
+                <button type="button" aria-pressed={mode === 'pcap'} onClick={() => setMode('pcap')}>
+                  Plik PCAP
+                </button>
               </div>
             </div>
 
@@ -199,6 +262,46 @@ export function Analysis() {
                   dokumentacyjnych); nic nie opuszcza Twojej sieci poza wywołaniem API.
                 </p>
               </>
+            ) : mode === 'pcap' ? (
+              <div className="field">
+                <span className="field-label" id="pcap-label">
+                  Plik z przechwyconym ruchem
+                </span>
+                <div className="row">
+                  <button
+                    type="button"
+                    className="btn"
+                    aria-describedby="pcap-label"
+                    onClick={() => pcapInput.current?.click()}
+                  >
+                    <Icon name="upload" size={15} /> Wybierz plik PCAP
+                  </button>
+                  <span className={pcapFile ? undefined : 'muted'} data-testid="pcap-file">
+                    {pcapFile ? `${pcapFile.name} · ${formatBytes(pcapFile.size)}` : 'Nie wybrano pliku'}
+                  </span>
+                  <input
+                    ref={pcapInput}
+                    type="file"
+                    accept=".pcap,.pcapng,.cap,application/vnd.tcpdump.pcap"
+                    hidden
+                    data-testid="pcap-input"
+                    onChange={(event) => {
+                      choosePcap(event.target.files?.[0])
+                      event.target.value = ''
+                    }}
+                  />
+                </div>
+                <span className="hint">
+                  Pliki .pcap i .pcapng do 200 MB. Plik jest analizowany na serwerze w tle: pakiety trafiają przez
+                  kolejkę Redis do silnika detekcji, a wykryte anomalie do alertów.
+                </span>
+                {pcapError && (
+                  <div className="notice" data-tone="error" role="alert">
+                    <Icon name="alert" size={18} />
+                    <div>{pcapError}</div>
+                  </div>
+                )}
+              </div>
             ) : (
               <div className="field">
                 <div className="row" style={{ justifyContent: 'space-between' }}>
@@ -245,14 +348,48 @@ export function Analysis() {
               </div>
             )}
 
-            <button type="submit" className="btn btn-primary btn-block" disabled={analyze.isPending || countError !== null}>
-              <Icon name="play" size={16} className={analyze.isPending ? 'spin' : undefined} />
-              {analyze.isPending ? 'Analizuję…' : 'Uruchom analizę'}
+            <button
+              type="submit"
+              className="btn btn-primary btn-block"
+              disabled={analyze.isPending || pcapRunning || countError !== null}
+            >
+              <Icon name="play" size={16} className={analyze.isPending || pcapRunning ? 'spin' : undefined} />
+              {mode === 'pcap' && upload.isPending
+                ? 'Wysyłam plik…'
+                : analyze.isPending || pcapRunning
+                  ? 'Analizuję…'
+                  : 'Uruchom analizę'}
             </button>
           </div>
         </form>
 
         <div className="stack" aria-live="polite">
+          {mode === 'pcap' ? (
+            <>
+              {upload.isError && <InlineError error={upload.error} />}
+              {job.isError && <InlineError error={job.error} />}
+              {job.data ? (
+                <PcapResult job={job.data} />
+              ) : (
+                !upload.isError &&
+                !job.isError && (
+                  <div className="card">
+                    <div className="state">
+                      <span className="state-icon">
+                        <Icon name="upload" size={22} />
+                      </span>
+                      <h3>{pcapRunning ? 'Wysyłanie pliku…' : 'Wyniki importu pojawią się tutaj'}</h3>
+                      <p>
+                        Wybierz plik PCAP i uruchom analizę. Postęp importu jest widoczny na bieżąco, a utworzone
+                        alerty od razu trafiają do zakładki Alerty.
+                      </p>
+                    </div>
+                  </div>
+                )
+              )}
+            </>
+          ) : (
+          <>
           {analyze.isError && <InlineError error={analyze.error} />}
 
           {!result && !analyze.isError && (
@@ -423,16 +560,8 @@ export function Analysis() {
               )}
             </>
           )}
-
-
-          <div className="notice">
-            <Icon name="upload" size={18} />
-            <div>
-              <strong>Import plików PCAP.</strong> Backend nie udostępnia jeszcze endpointu do importu; plik
-              PCAP wczytuje się dziś skryptem <code>python -m netguard.main</code> z katalogu głównego
-              projektu.
-            </div>
-          </div>
+          </>
+          )}
         </div>
       </div>
     </div>

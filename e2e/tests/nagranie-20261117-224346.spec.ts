@@ -43,7 +43,6 @@ test('test', async ({ page }) => {
   await page.getByText('Skanowanie portów').click();
   await page.getByRole('radio', { name: 'Skanowanie portów Jedno źródł' }).check();
   await page.locator('.state-icon').click();
-  await page.getByText('Import plików PCAP. Backend').click();
   await page.getByText('Jedno źródło wielokrotnie łą').click();
   await page.getByRole('radio', { name: 'Brute force Jedno źródło' }).check();
   await page.getByText('Wyniki pojawią się tutajWybierz metodę i dane, a następnie uruchom analizę.').click();

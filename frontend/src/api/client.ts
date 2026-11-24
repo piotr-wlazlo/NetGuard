@@ -43,11 +43,13 @@ export function parseErrorDetail(body: unknown): { message: string; details: str
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
   json?: unknown
+  /** Formularz multipart (np. upload pliku); nagłówek Content-Type ustawia przeglądarka. */
+  form?: FormData
   signal?: AbortSignal
 }
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', json, signal } = options
+  const { method = 'GET', json, form, signal } = options
 
   let response: Response
   try {
@@ -55,7 +57,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
       method,
       signal,
       headers: json === undefined ? undefined : { 'Content-Type': 'application/json' },
-      body: json === undefined ? undefined : JSON.stringify(json),
+      body: form ?? (json === undefined ? undefined : JSON.stringify(json)),
     })
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error

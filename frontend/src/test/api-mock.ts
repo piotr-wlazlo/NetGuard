@@ -28,7 +28,7 @@ export function mockApi(handlers: Record<string, Handler>) {
       const request: MockRequest = {
         method,
         path: url.pathname + url.search,
-        body: init?.body ? JSON.parse(String(init.body)) : undefined,
+        body: readBody(init?.body),
       }
       calls.push(request)
 
@@ -52,4 +52,13 @@ export function mockNetworkDown() {
       throw new TypeError('Failed to fetch')
     }),
   )
+}
+
+/** JSON jest parsowany, a FormData zamieniane na obiekt (pliki jako nazwy), żeby testy mogły sprawdzać treść. */
+function readBody(body: BodyInit | null | undefined): unknown {
+  if (!body) return undefined
+  if (body instanceof FormData) {
+    return Object.fromEntries([...body.entries()].map(([key, value]) => [key, value instanceof File ? value.name : value]))
+  }
+  return JSON.parse(String(body))
 }

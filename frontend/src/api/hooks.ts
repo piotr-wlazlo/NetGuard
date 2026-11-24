@@ -10,6 +10,7 @@ import type {
   DetectionMethod,
   FlowInput,
   HealthResponse,
+  PcapJob,
 } from './types'
 
 export const queryKeys = {
@@ -20,6 +21,7 @@ export const queryKeys = {
 
 const ALERTS_POLL_MS = 10_000
 const HEALTH_POLL_MS = 15_000
+export const PCAP_POLL_MS = 1_000
 
 export function useHealth() {
   return useQuery({
@@ -98,5 +100,29 @@ export function useAnalyze() {
         json: { flows },
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.alerts }),
+  })
+}
+
+export function useUploadPcap() {
+  return useMutation({
+    mutationFn: ({ file, method }: { file: File; method: DetectionMethod }) => {
+      const form = new FormData()
+      form.append('file', file)
+      return request<PcapJob>(`/api/v1/analysis/pcap?method=${method}`, { method: 'POST', form })
+    },
+  })
+}
+
+/** Status zadania PCAP; odpytywany co sekundę, dopóki zadanie trwa. */
+export function usePcapJob(jobId: string | null) {
+  return useQuery({
+    queryKey: ['pcap-job', jobId],
+    queryFn: () => request<PcapJob>(`/api/v1/analysis/pcap/${jobId}`),
+    enabled: jobId !== null,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      return status === 'done' || status === 'failed' ? false : PCAP_POLL_MS
+    },
+    refetchOnWindowFocus: false,
   })
 }
