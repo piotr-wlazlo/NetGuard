@@ -1,0 +1,129 @@
+/*
+ * Tokeny projektowe NetGuard w barwach ŁKS Łódź: czerwień, biel i czerń.
+ *
+ * Czerwień herbu to #ec192e, ale biały tekst na niej ma kontrast 4,4:1 (poniżej progu AA 4,5:1),
+ * więc dla elementów z tekstem używamy #e4152b (4,7:1) — różnica jest niedostrzegalna.
+ *
+ * Czerwień jest kolorem marki (nawigacja, przyciski, akcenty), dlatego skala priorytetów alertów
+ * jest od niej niezależna: czarny > pomarańczowy > żółty > szary. Priorytet zawsze ma też podpis tekstowy.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  --font-body: 'Barlow', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --font-display: 'Barlow Condensed', 'Barlow', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* marka */
+  --red: #e4152b;
+  --red-strong: #b80f22;
+  --red-text: #c40e22; /* czerwony tekst na jasnym tle (6,1:1) */
+  --red-tint: #fde7ea;
+  --ink: #141414;
+  --on-red: #ffffff;
+
+  /* powierzchnie */
+  --bg: #f4f1ec; /* ciepła biel, jak papier programu meczowego */
+  --surface: #ffffff;
+  --surface-2: #ece8e1;
+  --surface-hover: #fbf6f4;
+  --line: #d8d2c8; /* delikatne linie */
+  --line-strong: #8f897f; /* obrysy pól formularzy */
+  --card-rule: var(--ink); /* gruba linia nad kartą */
+  --text: #141414;
+  --text-2: #4a453f;
+  --text-3: #6b655d;
+  --track: #e6e1d8; /* tło pasków wykresów */
+
+  /* tablica wyników (kafelki KPI) */
+  --board: #141414;
+  --board-text: #ffffff;
+  --board-dim: #bdb6ab;
+  --board-danger: #ff5a69;
+  --board-warn: #f5c400;
+  --board-ok: #46d17e;
+
+  --focus: #e4152b;
+
+  /* priorytety: tło i tekst plakietki oraz kolor słupka */
+  --sev-critical-bg: #141414;
+  --sev-critical-fg: #ffffff;
+  --sev-critical: #141414;
+  --sev-high-bg: #f26b00;
+  --sev-high-fg: #141414;
+  --sev-high: #f26b00;
+  --sev-medium-bg: #f5c400;
+  --sev-medium-fg: #141414;
+  --sev-medium: #f5c400;
+  --sev-low-bg: #cfd6dd;
+  --sev-low-fg: #141414;
+  --sev-low: #8493a3;
+  --sev-info-bg: #e4e0d8;
+  --sev-info-fg: #141414;
+  --sev-info: #a8a298;
+
+  /* statusy */
+  --st-new-bg: #e4152b;
+  --st-new-fg: #ffffff;
+  --st-acknowledged-bg: #141414;
+  --st-acknowledged-fg: #ffffff;
+  --st-resolved-bg: #187a41;
+  --st-resolved-fg: #ffffff;
+  --st-false_positive-bg: transparent;
+  --st-false_positive-fg: #4a453f;
+  --st-false_positive-line: #8f897f;
+
+  --ok: #187a41;
+  --warn: #f5c400;
+  --warn-tint: #fff6d6;
+  --error-tint: #fde7ea;
+  --ok-tint: #e3f3ea;
+
+  --sidebar-w: 248px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --red-text: #ff5c6c; /* czerwony tekst na ciemnym tle */
+    --red-tint: #3a1318;
+    --bg: #0d0d0e;
+    --surface: #18181a;
+    --surface-2: #232326;
+    --surface-hover: #1f1b1c;
+    --line: #34343a;
+    --line-strong: #6c6a66;
+    --card-rule: var(--red);
+    --text: #f4f1ec;
+    --text-2: #c9c3b9;
+    --text-3: #9a948b;
+    --track: #2c2c31;
+
+    --board: #000000;
+    --focus: #ff5c6c;
+
+    --sev-critical-bg: #ffffff;
+    --sev-critical-fg: #141414;
+    --sev-critical: #ffffff;
+    --sev-high-bg: #ff8a2b;
+    --sev-high: #ff8a2b;
+    --sev-medium-bg: #ffd21f;
+    --sev-medium: #ffd21f;
+    --sev-low-bg: #8798ab;
+    --sev-low: #8798ab;
+    --sev-info-bg: #3a3833;
+    --sev-info-fg: #f4f1ec;
+    --sev-info: #6a665e;
+
+    --st-acknowledged-bg: #f4f1ec;
+    --st-acknowledged-fg: #141414;
+    --st-resolved-bg: #2e9b5a;
+    --st-false_positive-fg: #c9c3b9;
+    --st-false_positive-line: #6c6a66;
+
+    --ok: #46d17e;
+    --warn-tint: #382f0d;
+    --error-tint: #3a1318;
+    --ok-tint: #12301f;
+  }
+}
