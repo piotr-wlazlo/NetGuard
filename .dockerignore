@@ -1,0 +1,14 @@
+.git
+.venv
+venv
+.idea
+**/__pycache__
+.pytest_cache
+frontend
+e2e
+tests
+*.pcap
+!data/monday_sample.pcap
+*.pcapng
+.DS_Store
+Claude outputs

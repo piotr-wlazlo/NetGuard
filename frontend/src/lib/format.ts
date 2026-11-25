@@ -85,3 +85,10 @@ export function formatRelative(date: Date | null, now: Date = new Date()): strin
   if (abs < 86_400) return relativeFormat.format(Math.round(seconds / 3600), 'hour')
   return relativeFormat.format(Math.round(seconds / 86_400), 'day')
 }
+
+/** Rozmiar pliku: B, KB albo MB z przecinkiem dziesiętnym. */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1).replace('.', ',')} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1).replace('.', ',')} MB`
+}

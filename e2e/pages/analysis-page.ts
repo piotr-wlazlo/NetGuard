@@ -16,6 +16,9 @@ export class AnalysisPage extends BasePage {
   readonly resultHeading: Locator
   readonly createdAlerts: Locator
   readonly errorNotice: Locator
+  readonly pcapInput: Locator
+  readonly pcapFileName: Locator
+  readonly pcapStatus: Locator
 
   constructor(page: Page) {
     super(page)
@@ -27,6 +30,10 @@ export class AnalysisPage extends BasePage {
     this.resultHeading = page.getByRole('heading', { name: 'Wynik analizy' })
     this.createdAlerts = page.getByRole('heading', { name: 'Utworzone alerty' })
     this.errorNotice = page.getByRole('alert')
+    // ukryte pole <input type="file"> trybu „Plik PCAP”; Playwright podstawia do niego plik bez okna wyboru
+    this.pcapInput = page.getByTestId('pcap-input')
+    this.pcapFileName = page.getByTestId('pcap-file')
+    this.pcapStatus = page.getByTestId('pcap-status')
   }
 
   async chooseMethod(label: MethodLabel): Promise<void> {
@@ -41,6 +48,24 @@ export class AnalysisPage extends BasePage {
 
   async useCustomJson(): Promise<void> {
     await this.page.getByRole('button', { name: 'Własny JSON' }).click()
+  }
+
+  async usePcapFile(): Promise<void> {
+    await this.page.getByRole('button', { name: 'Plik PCAP' }).click()
+  }
+
+  async choosePcap(name: string, buffer: Buffer): Promise<void> {
+    await this.pcapInput.setInputFiles({ name, mimeType: 'application/vnd.tcpdump.pcap', buffer })
+  }
+
+  /** Odnośnik do alertu utworzonego przez import PCAP. */
+  alertLink(id: number): Locator {
+    return this.page.getByRole('link', { name: `Alert #${id}` })
+  }
+
+  /** Etykieta z liczbą detekcji danego typu, np. „Skanowanie portów: 150”. */
+  detectionsOfType(text: string): Locator {
+    return this.page.locator('.chips .tag').filter({ hasText: text })
   }
 
   async run(): Promise<void> {

@@ -397,3 +397,217 @@ describe('Analysis page: result', () => {
         expect(screen.getByText('3 detekcje')).toBeInTheDocument()
     })
 })
+describe('Analysis page: PCAP import', () => {
+    const queuedJob = {
+        job_id: 'job-1',
+        status: 'queued',
+        method: 'rules',
+        filename: 'capture.pcap',
+        size_bytes: 2048,
+        packets_sent: 0,
+        packets_rejected: 0,
+        packets_skipped: 0,
+        detection_count: 0,
+        detections_by_type: {},
+        alert_count: 0,
+        alert_ids: [],
+        error: null,
+        created_at: '2026-11-24T18:00:00+00:00',
+        started_at: null,
+        finished_at: null,
+        duration_ms: null,
+    }
+
+    const doneJob = {
+        ...queuedJob,
+        status: 'done',
+        method: 'ml',
+        packets_sent: 2000,
+        packets_skipped: 150,
+        packets_rejected: 2,
+        detection_count: 120,
+        detections_by_type: { PORT_SCAN: 120 },
+        alert_count: 1,
+        alert_ids: [7],
+        finished_at: '2026-11-24T18:00:02+00:00',
+        duration_ms: 1234,
+    }
+
+    function pcapApi(job: unknown, upload: { status?: number; json?: unknown } = { status: 202, json: queuedJob }) {
+        return mockApi({
+            ...healthOk,
+            'GET /api/v1/alerts': { json: [] },
+            'POST /api/v1/analysis/pcap': upload,
+            'GET /api/v1/analysis/pcap/job-1': { json: job },
+        })
+    }
+
+    async function openPcapMode() {
+        const user = userEvent.setup()
+        const view = renderApp('/analysis')
+        await user.click(await screen.findByRole('button', { name: 'Plik PCAP' }))
+        return { user, view }
+    }
+
+    function choose(file: File) {
+        fireEvent.change(screen.getByTestId('pcap-input'), { target: { files: [file] } })
+    }
+
+    function pcapFile(name = 'capture.pcap') {
+        return new File([new Uint8Array([0xd4, 0xc3, 0xb2, 0xa1])], name, { type: 'application/vnd.tcpdump.pcap' })
+    }
+
+    it('uploads the selected file with the chosen method and shows the finished import', async () => {
+        const calls = pcapApi(doneJob)
+        const { user } = await openPcapMode()
+
+        await user.click(screen.getByRole('button', { name: 'ML' }))
+        choose(pcapFile())
+        expect(screen.getByTestId('pcap-file')).toHaveTextContent('capture.pcap · 4 B')
+        await runAnalysis(user)
+
+        expect(await screen.findByText('Zakończono')).toBeInTheDocument()
+        const post = calls.find((call) => call.method === 'POST')
+        expect(post?.path).toBe('/api/v1/analysis/pcap?method=ml')
+        expect(post?.body).toEqual({ file: 'capture.pcap' })
+
+        expect(screen.getByText('Import PCAP')).toBeInTheDocument()
+        expect(screen.getByTestId('pcap-status')).toHaveTextContent('Zakończono w 1,2 s')
+        expect(screen.getByText('Pakiety').nextSibling).toHaveTextContent('2000')
+        expect(screen.getByText('Pominięto 150 pakietów bez warstwy IP lub spoza TCP, UDP i ICMP oraz 2 pakiety z niepoprawnymi danymi.')).toBeInTheDocument()
+        expect(screen.getByText('Skanowanie portów: 120')).toBeInTheDocument()
+        expect(screen.getByRole('link', { name: 'Alert #7' })).toHaveAttribute('href', '/alerts/7')
+        expect(await screen.findByText(/Import PCAP zakończony: 120 detekcji, 1 nowych alertów/)).toBeInTheDocument()
+    })
+
+    it('shows progress while the job is running and blocks another upload', async () => {
+        pcapApi({ ...queuedJob, status: 'processing', packets_sent: 500 })
+        const { user } = await openPcapMode()
+
+        choose(pcapFile())
+        await runAnalysis(user)
+
+        expect(await screen.findByTestId('pcap-status')).toHaveTextContent('Przetwarzanie · przetworzono 500 pakietów')
+        expect(screen.getByRole('button', { name: /Analizuję/ })).toBeDisabled()
+        expect(screen.queryByText('Pakiety')).not.toBeInTheDocument()
+    })
+
+    it('requires a file before uploading', async () => {
+        const calls = pcapApi(doneJob)
+        const { user } = await openPcapMode()
+
+        expect(screen.getByTestId('pcap-file')).toHaveTextContent('Nie wybrano pliku')
+        await runAnalysis(user)
+
+        expect(screen.getByRole('alert')).toHaveTextContent('Wybierz plik PCAP.')
+        expect(calls.find((call) => call.method === 'POST')).toBeUndefined()
+    })
+
+    it('rejects a file with a wrong extension', async () => {
+        const calls = pcapApi(doneJob)
+        const { user } = await openPcapMode()
+
+        choose(new File(['hello'], 'notes.txt', { type: 'text/plain' }))
+
+        expect(screen.getByRole('alert')).toHaveTextContent('rozszerzeniem .pcap, .pcapng albo .cap')
+        await runAnalysis(user)
+        expect(calls.find((call) => call.method === 'POST')).toBeUndefined()
+    })
+
+    it('rejects a file larger than 200 MB', async () => {
+        pcapApi(doneJob)
+        await openPcapMode()
+        const big = pcapFile('big.pcapng')
+        Object.defineProperty(big, 'size', { value: 201 * 1024 * 1024 })
+
+        choose(big)
+
+        expect(screen.getByRole('alert')).toHaveTextContent('Plik jest za duży (201,0 MB). Limit to 200 MB.')
+        expect(screen.getByTestId('pcap-file')).toHaveTextContent('Nie wybrano pliku')
+    })
+
+    it('ignores cancelled file selection', async () => {
+        pcapApi(doneJob)
+        await openPcapMode()
+
+        fireEvent.change(screen.getByTestId('pcap-input'), { target: { files: [] } })
+
+        expect(screen.getByTestId('pcap-file')).toHaveTextContent('Nie wybrano pliku')
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('opens file chooser after clicking the select button', async () => {
+        pcapApi(doneJob)
+        const { user } = await openPcapMode()
+        const click = vi.spyOn(screen.getByTestId('pcap-input'), 'click')
+
+        await user.click(screen.getByRole('button', { name: /Wybierz plik PCAP/ }))
+
+        expect(click).toHaveBeenCalledTimes(1)
+    })
+
+    it('shows the API error when the upload is rejected', async () => {
+        pcapApi(doneJob, { status: 422, json: { detail: 'Plik nie jest w formacie PCAP ani PCAPNG.' } })
+        const { user } = await openPcapMode()
+
+        choose(pcapFile())
+        await runAnalysis(user)
+
+        expect(await screen.findByText('Plik nie jest w formacie PCAP ani PCAPNG.')).toBeInTheDocument()
+        expect(screen.queryByText('Import PCAP')).not.toBeInTheDocument()
+    })
+
+    it('shows the error when the job status cannot be loaded', async () => {
+        mockApi({
+            ...healthOk,
+            'GET /api/v1/alerts': { json: [] },
+            'POST /api/v1/analysis/pcap': { status: 202, json: queuedJob },
+            'GET /api/v1/analysis/pcap/job-1': { status: 404, json: { detail: 'Zadanie job-1 nie istnieje albo wygasło.' } },
+        })
+        const { user } = await openPcapMode()
+
+        choose(pcapFile())
+        await runAnalysis(user)
+
+        expect(await screen.findByText('Zadanie job-1 nie istnieje albo wygasło.')).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Uruchom analizę' })).toBeEnabled()
+    })
+
+    it('shows a failed job with its error', async () => {
+        pcapApi({ ...queuedJob, status: 'failed', packets_sent: 40, packets_rejected: 1, duration_ms: 50, error: 'Błąd odczytu pliku: truncated' })
+        const { user } = await openPcapMode()
+
+        choose(pcapFile())
+        await runAnalysis(user)
+
+        expect(await screen.findByTestId('pcap-status')).toHaveTextContent('Błąd · Błąd odczytu pliku: truncated')
+        expect(await screen.findByText('Import PCAP zakończył się błędem.')).toBeInTheDocument()
+        expect(screen.getByText('Pominięto 1 pakiet z niepoprawnymi danymi.')).toBeInTheDocument()
+        expect(screen.queryByText('Brak detekcji.')).not.toBeInTheDocument()
+    })
+
+    it('explains when the file has no anomalies', async () => {
+        pcapApi({ ...doneJob, detection_count: 0, detections_by_type: {}, alert_count: 0, alert_ids: [], packets_skipped: 0, packets_rejected: 0 })
+        const { user } = await openPcapMode()
+
+        choose(pcapFile())
+        await runAnalysis(user)
+
+        expect(await screen.findByText('Brak detekcji.')).toBeInTheDocument()
+        expect(screen.queryByText(/Pominięto/)).not.toBeInTheDocument()
+        expect(screen.queryByRole('link', { name: /Alert #/ })).not.toBeInTheDocument()
+    })
+
+    it('keeps flow analysis results separate from the PCAP view', async () => {
+        api()
+        const { user } = await openPcapMode()
+
+        await user.click(screen.getByRole('button', { name: 'Scenariusz testowy' }))
+        await runAnalysis(user)
+
+        expect(await screen.findByText('Wynik analizy')).toBeInTheDocument()
+        await user.click(screen.getByRole('button', { name: 'Plik PCAP' }))
+        expect(screen.queryByText('Wynik analizy')).not.toBeInTheDocument()
+        expect(screen.getByText('Wyniki importu pojawią się tutaj')).toBeInTheDocument()
+    })
+})

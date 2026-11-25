@@ -2,7 +2,7 @@ from typing import Optional, Sequence
 
 from sqlmodel import Session, select
 
-from netguard.alert_engine import ALERT_STATUSES, OPEN_STATUSES, build_alerts
+from netguard.alert_engine import ALERT_STATUSES, OPEN_STATUSES, build_alerts, group_key_for
 from netguard.model.alert import Alert
 from netguard.model.detection import Detection
 from netguard.model.network_flow import NetworkFlow
@@ -28,15 +28,17 @@ class AlertService:
         ).all()
         pairs = [(d, f) for d, f in rows if d.id in ids]
 
+        # Tylko klucze grup z bieżących detekcji, a nie wszystkie otwarte alerty w bazie
+        candidate_keys = {group_key_for(d, f) for d, f in pairs}
         open_group_keys = set(session.exec(
-            select(Alert.group_key).where(Alert.status.in_(OPEN_STATUSES))
-        ).all())
+            select(Alert.group_key).where(
+                Alert.status.in_(OPEN_STATUSES), Alert.group_key.in_(candidate_keys)
+            )
+        ).all()) if candidate_keys else set()
 
         alerts = build_alerts(pairs, open_group_keys)
         session.add_all(alerts)
         session.commit()
-        for alert in alerts:
-            session.refresh(alert)
         return alerts
 
     def list(self, session: Session, status: Optional[str] = None) -> list[Alert]:

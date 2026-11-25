@@ -1,8 +1,13 @@
+import os
+
 from redis import Redis
 from redis.exceptions import RedisError
 
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 
-def create_redis_client(host="localhost", port=6379, db=0):
+
+def create_redis_client(host=REDIS_HOST, port=REDIS_PORT, db=0):
     return Redis(
         host=host,
         port=port,

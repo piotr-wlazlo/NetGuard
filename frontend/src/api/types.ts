@@ -67,3 +67,26 @@ export type ConfigUpdate = Record<string, Record<string, number>>
 export interface HealthResponse {
   status: string
 }
+
+export type PcapJobStatus = 'queued' | 'processing' | 'done' | 'failed'
+
+/** PcapJobOut — status zadania importu PCAP (POST /api/v1/analysis/pcap, GET .../pcap/{job_id}). */
+export interface PcapJob {
+  job_id: string
+  status: PcapJobStatus
+  method: DetectionMethod
+  filename: string
+  size_bytes: number
+  packets_sent: number
+  packets_rejected: number
+  packets_skipped: number
+  detection_count: number
+  detections_by_type: Record<string, number>
+  alert_count: number
+  alert_ids: number[]
+  error: string | null
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+  duration_ms: number | null
+}

@@ -1,12 +1,22 @@
+# Cały system NetGuard: docker compose up --build
+# Interfejs: http://localhost:8080, API (Swagger): http://localhost:8000/docs
 services:
   redis:
-    image: redis:alpine
+    image: redis:7-alpine
     container_name: netguard-redis
+    command: redis-server --appendonly yes
     ports:
       - "6379:6379"
-    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   postgres:
-    image: postgres:latest
+    image: postgres:18
     container_name: netguard-postgres
     environment:
       POSTGRES_USER: netguard
@@ -16,6 +26,61 @@ services:
       - "5433:5432"
     volumes:
       - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U netguard -d netguard"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: .
+    container_name: netguard-backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://netguard:netguard@postgres:5432/netguard
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      NETGUARD_INIT_DB: "1"
+      WEB_CONCURRENCY: "4"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: netguard-frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Testy obciążeniowe (uruchamiane tylko na żądanie: --profile loadtest), opis w load_tests/README.md
+  locust:
+    image: locustio/locust
+    profiles: ["loadtest"]
+    working_dir: /mnt/locust
+    volumes:
+      - ./load_tests:/mnt/locust
+    environment:
+      LOCUST_LOCUSTFILE: /mnt/locust/locustfile.py
+      LOCUST_HOST: http://frontend
+    ports:
+      - "8089:8089"
+    depends_on:
+      - frontend
 
 volumes:
   postgres-data:
+  redis-data:

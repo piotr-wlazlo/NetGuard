@@ -12,3 +12,11 @@ def get_detection_service() -> DetectionService:
 
 def get_alert_service() -> AlertService:
     return _alert_service
+
+from netguard.services.pcap_service import PcapService  # noqa: E402
+
+_pcap_service = PcapService()
+
+
+def get_pcap_service() -> PcapService:
+    return _pcap_service

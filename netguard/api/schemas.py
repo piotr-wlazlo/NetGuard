@@ -124,3 +124,24 @@ class AnalysisResponse(BaseModel):
     detections: list[DetectionOut]
     alert_count: int = 0
     alerts: list[AlertOut] = Field(default_factory=list)
+
+class PcapJobOut(BaseModel):
+    """Status zadania importu PCAP (POST zwraca je ze statusem queued, GET pokazuje postęp i wynik)."""
+
+    job_id: str
+    status: Literal["queued", "processing", "done", "failed"]
+    method: Literal["rules", "statistical", "ml"]
+    filename: str
+    size_bytes: int
+    packets_sent: int = 0
+    packets_rejected: int = 0
+    packets_skipped: int = 0
+    detection_count: int = 0
+    detections_by_type: dict[str, int] = Field(default_factory=dict)
+    alert_count: int = 0
+    alert_ids: list[int] = Field(default_factory=list)
+    error: str | None = None
+    created_at: str
+    started_at: str | None = None
+    finished_at: str | None = None
+    duration_ms: int | None = None

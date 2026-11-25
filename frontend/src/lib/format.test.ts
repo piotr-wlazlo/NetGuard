@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+    formatBytes,
     formatDateTime,
     formatNumber,
     formatPercent,
@@ -144,5 +145,12 @@ describe('formatRelative', () => {
 
     it('describes future dates', () => {
         expect(formatRelative(shifted(3 * 86400), now)).toBe('za 3 dni')
+    })
+})
+describe('formatBytes', () => {
+    it('uses bytes, kilobytes and megabytes with a decimal comma', () => {
+        expect(formatBytes(512)).toBe('512 B')
+        expect(formatBytes(1536)).toBe('1,5 KB')
+        expect(formatBytes(5 * 1024 * 1024)).toBe('5,0 MB')
     })
 })
