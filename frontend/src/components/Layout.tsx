@@ -15,7 +15,7 @@ export function Layout() {
     <div className="shell">
       <aside className="sidebar">
         <NavLink to="/" className="brand" aria-label="NetGuard — strona główna">
-          <img className="brand-crest" src="/logo.svg" alt="" width={67} height={46} />
+          <img className="brand-crest" src="/logo.png" alt="" width={46} height={46} />
           <span className="brand-name">NetGuard</span>
         </NavLink>
 

@@ -117,7 +117,7 @@ textarea {
 }
 .brand-crest {
   flex: none;
-  width: auto;
+  width: 46px;
   height: 46px;
 }
 .brand-name {
@@ -612,6 +612,7 @@ textarea {
     background: none;
   }
   .brand-crest {
+    width: 38px;
     height: 38px;
   }
   .brand-name {

@@ -60,7 +60,7 @@ Oprawa w barwach ŁKS Łódź (czerwień, biel, czerń), tokeny w [src/styles/to
   pomarańczowy, żółty i szary (niski). Priorytet i status mają zawsze podpis tekstowy, nie tylko kolor.
 - Kroje: Barlow Condensed (nagłówki, liczby) i Barlow (tekst), paczki `@fontsource/*` osadzone w buildzie,
   bez zapytań do zewnętrznych serwerów. Podzbiór `latin-ext` zawiera polskie znaki.
-- Logo (jeżozwierz) w pasku bocznym to `public/logo.svg` (białe elementy na czerwone tło), favicona to `public/favicon.svg` (ten sam znak na czerwonym kwadracie).
+- Logo (jeżozwierz na białej okrągłej tarczy) w pasku bocznym to `public/logo.png` (192 px); favicona to `public/favicon.png` (64 px), ikona dla iOS to `public/apple-touch-icon.png` (180 px).
 - Jasny i ciemny motyw wg ustawień systemu; układ mobilny z nawigacją pod czerwonym paskiem.
 
 ## Czego backend jeszcze nie ma (wpływ na UI)
